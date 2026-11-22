@@ -99,6 +99,27 @@ class WestCommandsTests(unittest.TestCase):
                         "DT_COMPAT_HAS_OKAY_mck_aaa_battery",
                     ],
                 ),
+                "mck_settings": ConfigAndDeviceTree(
+                    config=[
+                        "CONFIG_MCK_DEVICE=y",
+                        "CONFIG_MCK_AAA_BATTERY=y",
+                        "CONFIG_MCK_SETTINGS=y",
+                        "CONFIG_MCK_SETTINGS_POWER=y",
+                        "CONFIG_ZMK_SLEEP=y",
+                        # not split: nothing to relay
+                        NotFound("CONFIG_MCK_SETTINGS_SPLIT_RELAY=y"),
+                    ],
+                    device=[
+                        "DT_COMPAT_HAS_OKAY_mck_aaa_battery",
+                    ],
+                ),
+                "mck_settings_battery_only": ConfigAndDeviceTree(
+                    config=[
+                        "CONFIG_MCK_SETTINGS=y",
+                        "# CONFIG_MCK_SETTINGS_POWER is not set",
+                    ],
+                    device=[],
+                ),
                 "custom_settings_board": ConfigAndDeviceTree(
                     config=[
                         # Verify that zmk-feature-custom-settings is present and enabled

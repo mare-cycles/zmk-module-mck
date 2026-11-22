@@ -2,7 +2,7 @@
  * Based on ZMK's app/module/drivers/sensor/battery/battery_voltage_divider.c
  * Copyright (c) 2020 The ZMK Contributors
  *
- * Changes (NiMH curve, `cells`, standalone channel_get):
+ * Changes (NiMH / alkaline curves, `cells`, standalone channel_get):
  * Copyright (c) 2026 mare-cycles
  *
  * SPDX-License-Identifier: MIT
@@ -20,6 +20,20 @@
 #include <zephyr/logging/log.h>
 
 #include <mck/aaa_battery_curve.h>
+
+#if IS_ENABLED(CONFIG_MCK_SETTINGS)
+#include <mck/settings.h>
+#endif
+
+/* The percent curve: NiMH, or the type chosen in MCK Aquarium (mck/settings.h). */
+static uint8_t aaa_mv_to_pct(uint16_t millivolts, uint8_t cells) {
+#if IS_ENABLED(CONFIG_MCK_SETTINGS)
+    if (mck_battery_type_get() == MCK_BATTERY_TYPE_ALKALINE) {
+        return mck_alkaline_mv_to_pct(millivolts, cells);
+    }
+#endif
+    return mck_nimh_mv_to_pct(millivolts, cells);
+}
 
 LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 
@@ -89,7 +103,7 @@ static int aaa_sample_fetch(const struct device *dev, enum sensor_channel chan) 
                               &val);
 
         uint16_t millivolts = val * (uint64_t)drv_cfg->full_ohm / drv_cfg->output_ohm;
-        uint8_t percent = mck_nimh_mv_to_pct(millivolts, drv_cfg->cells);
+        uint8_t percent = aaa_mv_to_pct(millivolts, drv_cfg->cells);
         LOG_DBG("ADC raw %d ~ %d mV => %d mV (%d cell) => %d%%", drv_data->value.adc_raw, val,
                 millivolts, drv_cfg->cells, percent);
 

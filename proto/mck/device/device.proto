@@ -46,12 +46,40 @@ message Status {
     Battery central_battery = 5;
     // Split peripherals, in ZMK's peripheral order
     repeated Battery peripheral_batteries = 6;
+    // Whether each split peripheral is connected (judged from its battery
+    // report: ZMK sets it to 0 when the peripheral disconnects)
+    repeated bool peripheral_connected = 7;
 }
+
+enum BatteryType {
+    BATTERY_TYPE_NIMH = 0;      // eneloop and other NiMH
+    BATTERY_TYPE_ALKALINE = 1;
+}
+
+// Settings kept in flash. The central sends changes to the split peripherals.
+message Settings {
+    // Idle / sleep can be changed (CONFIG_MCK_SETTINGS_POWER, ZMK main+dya)
+    bool power_supported = 1;
+    // Milliseconds of inactivity before idle (0 = never)
+    uint32 idle_ms = 2;
+    // Milliseconds of inactivity before deep sleep (0 = never)
+    uint32 sleep_ms = 3;
+    // The battery type can be changed (CONFIG_MCK_SETTINGS + mck,aaa-battery)
+    bool battery_type_supported = 4;
+    BatteryType battery_type = 5;
+}
+
+message GetSettingsRequest {}
+
+// Applies the supported parts of `settings` (the *_supported fields are ignored)
+message SetSettingsRequest { Settings settings = 1; }
 
 message Request {
     oneof request_type {
         GetInfoRequest get_info = 1;
         GetStatusRequest get_status = 2;
+        GetSettingsRequest get_settings = 3;
+        SetSettingsRequest set_settings = 4;
     }
 }
 
@@ -62,6 +90,8 @@ message Response {
         ErrorResponse error = 1;
         GetInfoResponse get_info = 2;
         Status get_status = 3;
+        // Answer to both GetSettings and SetSettings (the values now in effect)
+        Settings settings = 4;
     }
 }
 

@@ -6,3 +6,4 @@ mck.device.GetInfoResponse.board_revision     max_size:16
 mck.device.GetInfoResponse.module_version     max_size:16
 mck.device.ErrorResponse.message              max_size:64
 mck.device.Status.peripheral_batteries        max_count:4
+mck.device.Status.peripheral_connected        max_count:4

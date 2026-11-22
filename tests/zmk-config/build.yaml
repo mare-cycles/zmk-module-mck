@@ -24,6 +24,24 @@ include:
       - studio-rpc-usb-uart
       - mck-aaa-battery
 
+  # MCK Aquarium settings: battery type + idle / sleep (main+dya), deep sleep on.
+  - artifact: mck_settings
+    board: xiao_ble//zmk
+    shield: tester_xiao
+    cmake-args: -DCONFIG_ZMK_STUDIO=y -DCONFIG_MCK_DEVICE=y -DCONFIG_MCK_SETTINGS=y -DCONFIG_MCK_SETTINGS_POWER=y -DCONFIG_ZMK_SLEEP=y
+    snippets:
+      - studio-rpc-usb-uart
+      - mck-aaa-battery
+
+  # Settings without the power part (what a ZMK without main+dya can build).
+  - artifact: mck_settings_battery_only
+    board: xiao_ble//zmk
+    shield: tester_xiao
+    cmake-args: -DCONFIG_ZMK_STUDIO=y -DCONFIG_MCK_DEVICE=y -DCONFIG_MCK_SETTINGS=y
+    snippets:
+      - studio-rpc-usb-uart
+      - mck-aaa-battery
+
   # mck__device next to another custom Studio RPC subsystem.
   - artifact: custom_settings_board
     board: xiao_ble//zmk

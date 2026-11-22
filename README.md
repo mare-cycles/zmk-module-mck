@@ -12,7 +12,8 @@ It works with any ZMK keyboard, and provides:
   the OS's Bluetooth battery indicator and is relayed from split peripherals as usual.
 - **`mck__device`** — a custom ZMK Studio RPC subsystem that answers the model name, board
   revision, connection (USB / Bluetooth profile) and battery levels, and sends a notification
-  when they change.
+  when they change. With `CONFIG_MCK_SETTINGS` it also reads / changes the battery type and the
+  idle / sleep times (shared with split peripherals).
 
 > Requires ZMK with the **unofficial custom Studio RPC protocol**
 > ([cormoran/zmk](https://github.com/cormoran/zmk), branches `main+custom-studio-protocol` or
@@ -94,11 +95,34 @@ Enable it on the half that talks to ZMK Studio (the central of a split keyboard)
 | Request      | Response                                                                                                                                  |
 | ------------ | ----------------------------------------------------------------------------------------------------------------------------------------- |
 | `get_info`   | model, board revision, module version, number of split peripherals, number of Bluetooth profiles                                         |
-| `get_status` | transport (none / USB / BLE), active BLE profile and whether it is connected, USB power, battery of this half (% and mV), peripherals (%) |
+| `get_status` | transport (none / USB / BLE), active BLE profile and whether it is connected, USB power, battery of this half (% and mV), peripherals (% and connected) |
+| `get_settings` / `set_settings` | battery type (NiMH / alkaline) and idle / sleep times, when `CONFIG_MCK_SETTINGS` is on (see 4.) |
 
 A `Notification { status_changed }` is sent (after `CONFIG_MCK_DEVICE_NOTIFY_DELAY_MS`, default
 250 ms, merging bursts) when the battery level, the endpoint, the BLE profile or the USB state
 changes. The protocol is in [`proto/mck/device/device.proto`](proto/mck/device/device.proto).
+
+A peripheral counts as connected while its battery report is above 0 % (ZMK sets it to 0 when the
+peripheral disconnects).
+
+### 4. Settings: `CONFIG_MCK_SETTINGS`
+
+```conf
+# every half
+CONFIG_MCK_SETTINGS=y
+# idle / sleep times: needs cormoran/zmk main+dya (zmk_activity_set_*)
+CONFIG_MCK_SETTINGS_POWER=y
+CONFIG_ZMK_SLEEP=y
+# split: the central sends changes to the peripherals
+CONFIG_ZMK_SPLIT_RELAY_EVENT=y
+```
+
+- Battery type: switches the `mck,aaa-battery` curve between NiMH and alkaline (provisional
+  points in [`include/mck/aaa_battery_curve.h`](include/mck/aaa_battery_curve.h)); saved as the
+  Zephyr setting `mck/bat`.
+- Idle / sleep: ZMK's activity timeouts (saved by ZMK).
+- Split: each half keeps its own copy. The central sends a change as a split relay event
+  (`mks`) and sends it again when a peripheral reconnects.
 
 ## Development
 

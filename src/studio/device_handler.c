@@ -29,6 +29,10 @@
 #include <mck/device/device.pb.h>
 #include <mck/version.h>
 
+#if IS_ENABLED(CONFIG_MCK_SETTINGS)
+#include <mck/settings.h>
+#endif
+
 #if IS_ENABLED(CONFIG_ZMK_BLE)
 #include <zmk/ble.h>
 #include <zmk/events/ble_active_profile_changed.h>
@@ -100,14 +104,18 @@ static void fill_central_battery(mck_device_Battery *b) {
 
 static void fill_peripheral_batteries(mck_device_Status *s) {
     s->peripheral_batteries_count = MIN(MCK_PERIPHERAL_COUNT, ARRAY_SIZE(s->peripheral_batteries));
+    s->peripheral_connected_count = s->peripheral_batteries_count;
     for (pb_size_t i = 0; i < s->peripheral_batteries_count; i++) {
         mck_device_Battery *b = &s->peripheral_batteries[i];
         memset(b, 0, sizeof(*b));
+        s->peripheral_connected[i] = false;
 #if IS_ENABLED(CONFIG_ZMK_SPLIT_BLE_CENTRAL_BATTERY_LEVEL_FETCHING)
         uint8_t level = 0;
         if (zmk_split_central_get_peripheral_battery_level(i, &level) == 0) {
-            b->known = true;
+            // ZMK reports 0 when the peripheral disconnects
+            b->known = level > 0;
             b->percent = level;
+            s->peripheral_connected[i] = level > 0;
         }
 #endif
     }
@@ -175,6 +183,44 @@ static void handle_get_status(mck_device_Response *resp) {
     fill_status(&resp->response_type.get_status);
 }
 
+static void fill_settings(mck_device_Response *resp) {
+    resp->which_response_type = mck_device_Response_settings_tag;
+    mck_device_Settings *s = &resp->response_type.settings;
+    *s = (mck_device_Settings)mck_device_Settings_init_zero;
+#if IS_ENABLED(CONFIG_MCK_SETTINGS)
+    struct mck_settings_values v;
+    mck_settings_get(&v);
+    s->power_supported = v.has_power;
+    s->idle_ms = v.idle_ms;
+    s->sleep_ms = v.sleep_ms;
+    s->battery_type_supported = v.has_battery_type;
+    s->battery_type = v.battery_type == MCK_BATTERY_TYPE_ALKALINE
+                          ? mck_device_BatteryType_BATTERY_TYPE_ALKALINE
+                          : mck_device_BatteryType_BATTERY_TYPE_NIMH;
+#endif
+}
+
+static void handle_set_settings(const mck_device_SetSettingsRequest *req,
+                                mck_device_Response *resp) {
+#if IS_ENABLED(CONFIG_MCK_SETTINGS)
+    struct mck_settings_values now;
+    mck_settings_get(&now);
+    struct mck_settings_values v = {
+        .has_power = now.has_power && req->has_settings,
+        .idle_ms = req->settings.idle_ms,
+        .sleep_ms = req->settings.sleep_ms,
+        .has_battery_type = now.has_battery_type && req->has_settings,
+        .battery_type = req->settings.battery_type == mck_device_BatteryType_BATTERY_TYPE_ALKALINE
+                            ? MCK_BATTERY_TYPE_ALKALINE
+                            : MCK_BATTERY_TYPE_NIMH,
+    };
+    mck_settings_set(&v);
+#else
+    ARG_UNUSED(req);
+#endif
+    fill_settings(resp);
+}
+
 static void set_error(mck_device_Response *resp, const char *message) {
     resp->which_response_type = mck_device_Response_error_tag;
     resp->response_type.error = (mck_device_ErrorResponse)mck_device_ErrorResponse_init_zero;
@@ -203,6 +249,12 @@ static bool device_rpc_handle_request(const zmk_custom_CallRequest *raw_request,
         break;
     case mck_device_Request_get_status_tag:
         handle_get_status(resp);
+        break;
+    case mck_device_Request_get_settings_tag:
+        fill_settings(resp);
+        break;
+    case mck_device_Request_set_settings_tag:
+        handle_set_settings(&req.request_type.set_settings, resp);
         break;
     default:
         LOG_WRN("Unsupported mck__device request type: %d", req.which_request_type);

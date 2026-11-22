@@ -24,6 +24,29 @@ config MCK_DEVICE_NOTIFY_DELAY_MS
 
 endif # MCK_DEVICE
 
+config MCK_SETTINGS
+    bool "MCK runtime settings (battery type, idle / sleep), kept in flash"
+    depends on SETTINGS
+    help
+      Settings MCK Aquarium can change through mck__device: the battery type
+      of the mck,aaa-battery driver and (with MCK_SETTINGS_POWER) ZMK's idle
+      and deep sleep times. Enable on every half of a split keyboard.
+
+if MCK_SETTINGS
+
+config MCK_SETTINGS_POWER
+    bool "Idle / sleep times can be changed at runtime"
+    help
+      Needs zmk_activity_set_idle_ms() / zmk_activity_set_sleep_ms(), which
+      are in cormoran's ZMK branch main+dya (not in ZMK v0.3 / main).
+
+config MCK_SETTINGS_SPLIT_RELAY
+    bool "Send settings changes from the split central to the peripherals"
+    depends on ZMK_SPLIT && ZMK_SPLIT_RELAY_EVENT
+    default y
+
+endif # MCK_SETTINGS
+
 DT_COMPAT_MCK_AAA_BATTERY := mck,aaa-battery
 
 config MCK_AAA_BATTERY
