@@ -2,7 +2,7 @@
  * mck__device: model / connection / battery info for MCK Aquarium,
  * over the custom ZMK Studio RPC.
  *
- * Based on the handler of cormoran/zmk-module-template-with-custom-studio-rpc
+ * Based on the handler of cormoran/zmk-module-template-with-custom-studio-rpc (zmk-module-template:keep)
  * Copyright (c) 2024 The ZMK Contributors
  * Copyright (c) 2026 cormoran
  * Copyright (c) 2026 mare-cycles

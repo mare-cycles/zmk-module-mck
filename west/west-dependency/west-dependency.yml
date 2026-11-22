@@ -1,9 +1,4 @@
-# List of this module's dependencies
+# List of this module's dependencies (imported by keyboards that use the module
+# with `import: west.yml`). zmk-module-mck needs nothing besides ZMK itself.
 manifest:
-  remotes:
-    - name: zmkfirmware
-      url-base: https://github.com/zmkfirmware
-  projects:
-    - name: zmk-feature-custom-settings
-      url: https://github.com/cormoran/zmk-feature-custom-settings
-      revision: main
+  projects: []

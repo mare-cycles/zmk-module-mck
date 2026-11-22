@@ -22,9 +22,6 @@ config MCK_DEVICE_NOTIFY_DELAY_MS
     int "Wait before sending a status notification, to merge bursts of changes (ms)"
     default 250
 
-# The split-relay sample (src/split/template_relay.c) has no Kconfig of its
-# own: it follows ZMK's CONFIG_ZMK_SPLIT_RELAY_EVENT directly.
-
 endif # MCK_DEVICE
 
 DT_COMPAT_MCK_AAA_BATTERY := mck,aaa-battery

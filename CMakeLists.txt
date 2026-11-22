@@ -5,12 +5,6 @@ if(CONFIG_MCK_AAA_BATTERY)
 endif()
 
 if(CONFIG_MCK_DEVICE)
-    # Split-relay sample: compiled into BOTH split roles, gated on ZMK's own
-    # relay Kconfig -- see include/mck/device/template_relay.h.
-    if(CONFIG_ZMK_SPLIT_RELAY_EVENT)
-        target_sources(app PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src/split/template_relay.c)
-    endif()
-
     if(CONFIG_MCK_DEVICE_STUDIO_RPC)
         file(GLOB C_FILES ${CMAKE_CURRENT_SOURCE_DIR}/src/studio/*.c)
         target_sources(app PRIVATE ${C_FILES})

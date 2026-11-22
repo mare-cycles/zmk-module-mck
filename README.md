@@ -1,236 +1,122 @@
 # zmk-module-mck
 
-![ZMK Version](https://img.shields.io/badge/ZMK-master-blue)
-[![Test](https://github.com/mare-cycles/zmk-module-mck/actions/workflows/zmk-module.yml/badge.svg?branch=main)](https://github.com/mare-cycles/zmk-module-mck/actions/workflows/zmk-module.yml) [![Devcontainer](https://github.com/mare-cycles/zmk-module-mck/actions/workflows/devcontainer.yml/badge.svg?branch=main)](https://github.com/mare-cycles/zmk-module-mck/actions/workflows/devcontainer.yml)
+[![Test](https://github.com/mare-cycles/zmk-module-mck/actions/workflows/zmk-module.yml/badge.svg?branch=main)](https://github.com/mare-cycles/zmk-module-mck/actions/workflows/zmk-module.yml)
 
-This repository contains a template for a ZMK module with Web UI using the **unofficial** custom ZMK Studio RPC protocol.
+ZMK module for the MCK keyboards (MCK-01, MCK-02) and their configurator app, MCK Aquarium.
+MCK キーボード用の ZMK の部品です（単 4 電池の残量と、設定アプリ向けの機体の情報）。
 
-It's extended from ZMK official template with [zmk-west-commands](https://github.com/cormoran/zmk-west-commands), test code template, coding agent support, and custom Studio RPC protocol support.
+It works with any ZMK keyboard, and provides:
 
-## Summary
+- **`mck,aaa-battery`** — battery level of AAA NiMH cells (e.g. eneloop) measured through a
+  voltage divider. It plugs into ZMK's normal battery reporting, so the percentage shows up in
+  the OS's Bluetooth battery indicator and is relayed from split peripherals as usual.
+- **`mck__device`** — a custom ZMK Studio RPC subsystem that answers the model name, board
+  revision, connection (USB / Bluetooth profile) and battery levels, and sends a notification
+  when they change.
 
-This template includes:
+> Requires ZMK with the **unofficial custom Studio RPC protocol**
+> ([cormoran/zmk](https://github.com/cormoran/zmk), branches `main+custom-studio-protocol` or
+> `v0.3-branch+custom-studio-protocol`). The battery driver alone also works on plain ZMK.
 
-- **Firmware**: Sample custom Studio RPC handler (`src/studio/device_handler.c`)
-- **Protocol**: Protobuf definition (`proto/mck/device/device.proto`)
-- **Web UI**: React + TypeScript app (`web/`) using [@cormoran/zmk-studio-react-hook](https://github.com/cormoran/react-zmk-studio)
-- **Tests**: Firmware unit tests (`tests/studio/`) and build tests (`tests/zmk-config/`)
+## Usage
 
-Read through the [ZMK Module Creation](https://zmk.dev/docs/development/module-creation) page for details on how to configure this template.
+### 1. `config/west.yml`
 
-## More Info
-
-For more info on modules, you can read through through the [Zephyr modules page](https://docs.zephyrproject.org/3.5.0/develop/modules.html) and [ZMK's page on using modules](https://zmk.dev/docs/features/modules). [Zephyr's west manifest page](https://docs.zephyrproject.org/3.5.0/develop/west/manifest.html#west-manifests) may also be of use.
-
-## Module User Guide
-
-1. Add dependency to your `config/west.yml`. Note: this module requires a patched ZMK with custom Studio RPC support.
-
-   ```yml
-   manifest:
-       remotes:
-           ...
-           - name: cormoran
-           url-base: https://github.com/cormoran
-       projects:
-           ...
-           - name: zmk-module-mck
-           remote: cormoran
-           revision: main+custom-studio-protocol # or latest commit hash
-           import: true
-           ...
-           # Required: patched ZMK with custom Studio RPC support
-           - name: zmk
-           remote: cormoran
-           revision: main+custom-studio-protocol
-           import:
-               file: app/west.yml
-   ```
-
-2. Enable flags in your `config/<shield>.conf`
-
-   ```conf
-   CONFIG_MCK_DEVICE=y
-
-   # Optionally enable custom Studio RPC
-   CONFIG_ZMK_STUDIO=y
-   CONFIG_MCK_DEVICE_STUDIO_RPC=y
-   CONFIG_ZMK_CUSTOM_SETTINGS=y
-   CONFIG_ZMK_CUSTOM_SETTINGS_STUDIO_RPC=y
-   CONFIG_ZMK_STUDIO_RPC_RX_BUF_SIZE=128
-   CONFIG_ZMK_LOW_PRIORITY_THREAD_STACK_SIZE=2048
-   ```
-
-3. Implement your custom protocol by editing:
-   - `proto/mck/device/device.proto` — message types
-   - `src/studio/device_handler.c` — firmware RPC handler
-   - `web/src/App.tsx` — web UI
-
-### Web UI
-
-See [web/README.md](./web/README.md) for web UI development instructions.
-
-### Publishing Web UI
-
-**GitHub Pages**: Merge a pull request into `main+custom-studio-protocol` to deploy to `https://<account>.github.io/<repo>/`.
-
-**Cloudflare Workers (PR previews)**: Configure `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` secrets. Previews are optional — when the secrets are absent (e.g. a fresh repo created from this template), the workflow stays green and simply comments on the PR explaining how to enable them instead of deploying.
-
-## Module Development Guide
-
-### Initialize from template
-
-Right after creating a repository from this template, run the initialization
-script and follow the checklist in [AGENTS.md](./AGENTS.md):
-
-```bash
-python3 scripts/init_module.py --namespace <your-github-name> --module <feature-name>
+```yaml
+manifest:
+  remotes:
+    - name: cormoran
+      url-base: https://github.com/cormoran
+    - name: mare-cycles
+      url-base: https://github.com/mare-cycles
+  projects:
+    - name: zmk
+      remote: cormoran
+      revision: main+custom-studio-protocol # or a commit hash
+      import: app/west.yml
+    - name: zmk-module-mck
+      remote: mare-cycles
+      revision: main # or a commit hash
+  self:
+    path: config
 ```
 
-It replaces every template placeholder (identifiers, paths, URLs, artifact
-names) and verifies nothing is left (`--verify-only` re-checks at any time).
+### 2. Battery: `mck,aaa-battery`
 
-### Setup for running test
+Same wiring and properties as ZMK's `zmk,battery-voltage-divider`; only the
+voltage-to-percent curve differs. Example for one AAA cell + boost converter, battery voltage
+on XIAO D0 (AIN0) through a 1 MΩ / 470 kΩ divider:
 
-#### Option0: Dev container (recommended)
+```dts
+/ {
+    chosen {
+        zmk,battery = &vbatt;
+    };
+};
 
-Open this repository in VS Code with the [Dev Containers extension](https://marketplace.visualstudio.com/items?itemName=ms-vscode-remote.remote-containers). The container automatically initializes the west workspace using the isolated layout.
-
-#### Option1: west workspace directory layout
-
-Set west topdir as parent of repository root and download dependencies under `../`.
-This layout is useful to reduce disk usage by sharing dependencies with other zephyr modules.
-The build result is located in `../build`.
-
-```bash
-mkdir west-workspace
-cd west-workspace # this directory becomes west workspace root (topdir)
-git clone <this repository>
-# rm -r .west # if exists to reset workspace
-west init -l . --mf west/west-test-workspace.yml
-west update --narrow
-west zephyr-export
+// Boards that already have a `vbatt` node (e.g. xiao_ble): override it.
+&vbatt {
+    compatible = "mck,aaa-battery";
+    io-channels = <&adc 0>;
+    output-ohms = <470000>;
+    full-ohms = <(1000000 + 470000)>;
+    cells = <1>; // cells in series (default 1)
+};
 ```
 
-#### Option2: isolated directory layout
+```conf
+CONFIG_ZMK_BATTERY_REPORTING=y
+CONFIG_ZMK_BATTERY_REPORTING_FETCH_MODE_STATE_OF_CHARGE=y
 
-Set west topdir as repository root and download dependencies under `./dependencies`.
-This layout is useful if you don't want to share dependencies to other zephyr modules.
-Dev container and github actions uses this layout.
-The build result is located in `./build`.
+# Split central: also fetch the peripherals' battery levels and expose them to the host
+CONFIG_ZMK_SPLIT_BLE_CENTRAL_BATTERY_LEVEL_FETCHING=y
+CONFIG_ZMK_SPLIT_BLE_CENTRAL_BATTERY_LEVEL_PROXY=y
+```
+
+The NiMH curve (per cell, linear between the points) is provisional:
+
+| Voltage per cell | ≥ 1.30 V | 1.20 V | 1.10 V | ≤ 1.00 V |
+| ---------------- | -------- | ------ | ------ | -------- |
+| Percent          | 100 %    | 50 %   | 10 %   | 0 %      |
+
+### 3. Device info: `mck__device`
+
+```conf
+CONFIG_ZMK_STUDIO=y
+CONFIG_MCK_DEVICE=y
+CONFIG_MCK_DEVICE_MODEL="MCK-02"        # empty: CONFIG_ZMK_KEYBOARD_NAME
+CONFIG_MCK_DEVICE_BOARD_REVISION="r1"
+```
+
+Enable it on the half that talks to ZMK Studio (the central of a split keyboard).
+`CONFIG_MCK_DEVICE_STUDIO_RPC` defaults to `y` when `CONFIG_ZMK_STUDIO=y`.
+
+| Request      | Response                                                                                                                                  |
+| ------------ | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| `get_info`   | model, board revision, module version, number of split peripherals, number of Bluetooth profiles                                         |
+| `get_status` | transport (none / USB / BLE), active BLE profile and whether it is connected, USB power, battery of this half (% and mV), peripherals (%) |
+
+A `Notification { status_changed }` is sent (after `CONFIG_MCK_DEVICE_NOTIFY_DELAY_MS`, default
+250 ms, merging bursts) when the battery level, the endpoint, the BLE profile or the USB state
+changes. The protocol is in [`proto/mck/device/device.proto`](proto/mck/device/device.proto).
+
+## Development
+
+Tests run on GitHub Actions (`.github/workflows/zmk-module.yml`): build tests in
+`tests/zmk-config/` (checked by `test.py`) and the native_sim test in `tests/studio/`.
+
+Local setup (Linux, isolated layout; dependencies go to `./dependencies`):
 
 ```bash
-git clone <this repository>
-cd <cloned directory>
-# Idempotent helper shared with the devcontainer and CI: runs
-# `west init -l west --mf west-test-isolated.yml`, `west update --narrow`,
-# and `west zephyr-export`.
 bash scripts/setup_workspace.sh
-```
-
-### Pre-commit
-
-Every commit need to pass pre-commit verification. The verification contains formatting code and running tests.
-
-```
-pip install pre-commit
-pre-commit install
-
-# Run pre-commit manually
-pre-commit run --all-files
-# Run for git staged files
-pre-commit run
-```
-
-### Running Test
-
-```bash
-# Run unit test + build test and verify the results
-python3 -m unittest
-# Run build test directly
+python3 -m unittest            # build tests + native_sim test
 west zmk-build tests/zmk-config
-# Run unit test directly
 west zmk-test tests -m .
-# Run web tests
-cd web && npm test
 ```
 
-### Hardware-free Renode testing
+## License
 
-CI boots the firmware in the [Renode](https://renode.io/) emulator (a `Build`
-job step) and runs `tests/renode/` -- `renode_test.py` is the file a module
-built from this template rewrites for its own RPC surface. It uses
-`west zmk-renode-test`'s **`wired-split`** mode: a wired split pair whose central
-answers Studio RPC over the emulated **USB CDC** while the wired split link
-forwards key events, covering both the central-only Studio path and the split
-path. The ELFs are the `usb_wired_central` / `usb_wired_peripheral` artifacts in
-`tests/zmk-config/build.yaml`. Locally:
+MIT — see [LICENSE](LICENSE).
 
-```bash
-west zmk-build tests/zmk-config -af usb_wired_central
-west zmk-build tests/zmk-config -af usb_wired_peripheral
-west zmk-renode-test tests/renode --mode wired-split \
-    --elf build/usb_wired_central/zephyr/zmk.elf \
-    --peripheral-elf build/usb_wired_peripheral/zephyr/zmk.elf
-```
-
-The module's own split-relay *sample* (the central forwarding a value to the
-peripheral) is not exercised here -- ZMK's relay-over-wired transport is newer
-than this repo's pinned zmk, so it is covered by the BabbleSim BLE test instead
-(see below). Details (the mode + `ZMK_RENODE_*` env contract): see
-[zmk-west-commands' README, `west zmk-renode-test`](https://github.com/cormoran/zmk-west-commands#west-zmk-renode-test)
-and [docs/renode-testing.md](https://github.com/cormoran/zmk-west-commands/blob/main/docs/renode-testing.md).
-
-### Web UI end-to-end testing
-
-`web/e2e/` runs the **web UI itself**, in a headless browser, against this
-module's **real firmware** in Renode -- no hardware (CI's `Web UI E2E Test`
-workflow). `west zmk-web-e2e` boots the DUT, serves its Studio RPC (over the
-emulated USB CDC) to the browser and hands the test a `navigator.serial` shim,
-so the app, its transport, the RPC framing and the firmware are all real -- only
-the browser's serial driver is faked. `rpc.spec.ts` connects through the app's
-own button and round-trips the module's custom RPC; rewrite its assertions for
-your own requests. Locally:
-
-```bash
-west zmk-build tests/zmk-config -af web_e2e
-west zmk-web-e2e --elf build/web_e2e/zephyr/zmk.elf -- npm --prefix web run e2e
-```
-
-The DUT (the `web_e2e` artifact) is the real `studio-rpc-usb-uart` image with
-Studio locking off -- an emulator has no key to press `&studio_unlock` with.
-Details (the shim's permission model, the `ZMK_WEB_E2E_*` env contract,
-debugging): see
-[zmk-west-commands' docs/zmk-web-e2e.md](https://github.com/cormoran/zmk-west-commands/blob/main/docs/zmk-web-e2e.md).
-
-### Running BLE (BabbleSim) tests
-
-`tests/ble/` runs real `nrf52_bsim` firmware on a simulated radio (x86 Linux
-only; CI's `ble-test` job). The one case, `studio/custom-rpc-split`, checks --
-in a split central+peripheral topology -- that the custom Studio RPC answers
-over the BLE GATT transport while the split link is active, AND that the
-split-relay sample delivers the RPC value to the peripheral (asserted via the
-peripheral's log line). The Studio host side is one declarative
-`studio_requests.json` -- no host C code in this module. Locally:
-
-```bash
-west zmk-ble-test tests/ble -m .   # --auto-accept regenerates snapshots
-```
-
-Details (case-file conventions, JSON DSL, `{prefix}`/`{studio_host}`,
-BabbleSim setup, peripheral assertion): see
-[zmk-west-commands' README, `west zmk-ble-test`](https://github.com/cormoran/zmk-west-commands#west-zmk-ble-test).
-
-### Sync changes from template
-
-Run `Actions > Sync Changes in Template > Run workflow` to get the latest template changes as a pull request.
-
-If the template contains changes in `.github/workflows/*`, register a GitHub personal access token as `GH_TOKEN` repository secret (`repo` + `workflow` scopes).
-
-### Coding agent on actions
-
-Actions for github copilot and claude are available.
-
-- Mention `@copilot`
-- Setup `ANTHROPIC_API_KEY` secret and mention `@claude`
-  - Or fix [claude.yml](./github/workflows/claude.yml) to use `CLAUDE_CODE_OAUTH_TOKEN`
+- Created from [cormoran/zmk-module-template-with-custom-studio-rpc](https://github.com/cormoran/zmk-module-template-with-custom-studio-rpc) (MIT). <!-- zmk-module-template:keep -->
+- `src/battery/aaa_battery.c` is based on ZMK's `battery_voltage_divider.c` (MIT, © The ZMK Contributors).

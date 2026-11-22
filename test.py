@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import os
 import platform
 import shutil
 import subprocess
@@ -56,23 +55,6 @@ class WestCommandsTests(unittest.TestCase):
         self.assertIn("PASS: studio", result.stdout, result.stdout + result.stderr)
         self.assertNotIn("FAILED: ", result.stdout, result.stdout + result.stderr)
 
-    @unittest.skipUnless(
-        platform.system() == "Linux" and os.environ.get("BSIM_OUT_PATH"),
-        "BLE tests require Linux and a compiled BabbleSim tree (BSIM_OUT_PATH)",
-    )
-    def test_ble(self):
-        # BLE (BabbleSim) tests run via zmk-west-commands' `west zmk-ble-test`
-        # command (builds the DUT/peripherals/host under bsim and diffs each
-        # case's filtered output against its checked-in snapshot).
-        result = run_west(["zmk-ble-test", "tests/ble", "-m", "."])
-        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-        self.assertIn(
-            "PASS: studio/custom-rpc-split",
-            result.stdout,
-            result.stdout + result.stderr,
-        )
-        self.assertNotIn("FAILED: ", result.stdout, result.stdout + result.stderr)
-
     def test_zmk_build(self):
         self._test_zmk_build(
             {
@@ -117,16 +99,6 @@ class WestCommandsTests(unittest.TestCase):
                         "DT_COMPAT_HAS_OKAY_mck_aaa_battery",
                     ],
                 ),
-                # DUT of the web UI end-to-end test (web/e2e/): as
-                # device_board_with_rpc, but unlocked -- see build.yaml.
-                "web_e2e": ConfigAndDeviceTree(
-                    config=[
-                        "CONFIG_ZMK_STUDIO=y",
-                        "CONFIG_MCK_DEVICE_STUDIO_RPC=y",
-                        "# CONFIG_ZMK_STUDIO_LOCKING is not set",
-                    ],
-                    device=[],
-                ),
                 "custom_settings_board": ConfigAndDeviceTree(
                     config=[
                         # Verify that zmk-feature-custom-settings is present and enabled
@@ -138,34 +110,6 @@ class WestCommandsTests(unittest.TestCase):
                         "CONFIG_ZMK_CUSTOM_SETTINGS_STUDIO_RPC=y",
                         "CONFIG_ZMK_STUDIO_RPC_RX_BUF_SIZE=128",
                         "CONFIG_ZMK_LOW_PRIORITY_THREAD_STACK_SIZE=2048",
-                    ],
-                    device=[],
-                ),
-                # Hardware-free Renode testing pair (see README.md's
-                # "Hardware-free Renode testing" section): a wired split whose
-                # central answers Studio RPC over the emulated USB CDC. The
-                # central is the real studio-rpc-usb-uart image (USB on, BLE
-                # off) with the module + its custom Studio RPC and role central;
-                # the peripheral is a plain wired half (no Studio / no module).
-                "usb_wired_central": ConfigAndDeviceTree(
-                    config=[
-                        "CONFIG_ZMK_STUDIO=y",
-                        "CONFIG_MCK_DEVICE=y",
-                        "CONFIG_MCK_DEVICE_STUDIO_RPC=y",
-                        "CONFIG_ZMK_SPLIT=y",
-                        "CONFIG_ZMK_SPLIT_ROLE_CENTRAL=y",
-                        "CONFIG_ZMK_USB=y",
-                        "# CONFIG_ZMK_BLE is not set",
-                    ],
-                    device=[],
-                ),
-                "usb_wired_peripheral": ConfigAndDeviceTree(
-                    config=[
-                        "CONFIG_ZMK_SPLIT=y",
-                        "# CONFIG_ZMK_SPLIT_ROLE_CENTRAL is not set",
-                        "# CONFIG_ZMK_STUDIO is not set",
-                        "# CONFIG_MCK_DEVICE is not set",
-                        "# CONFIG_ZMK_BLE is not set",
                     ],
                     device=[],
                 ),
