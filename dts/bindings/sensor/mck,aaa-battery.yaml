@@ -1,0 +1,20 @@
+# Based on zmk,battery-voltage-divider.yaml
+# Copyright (c) 2020 The ZMK Contributors
+# Copyright (c) 2026 mare-cycles
+# SPDX-License-Identifier: MIT
+
+description: |
+  AAA (NiMH) battery level from a voltage divider. Same wiring and properties as
+  zmk,battery-voltage-divider; only the voltage-to-percent curve differs.
+
+compatible: "mck,aaa-battery"
+
+include: voltage-divider.yaml
+
+properties:
+  cells:
+    type: int
+    default: 1
+    description: |
+      Number of cells in series. The NiMH curve is applied to the voltage per
+      cell (1 for "one AAA + boost converter", 2 for two AAA in series).

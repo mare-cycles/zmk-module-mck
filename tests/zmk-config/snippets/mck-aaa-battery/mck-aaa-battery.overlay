@@ -1,0 +1,22 @@
+/*
+ * Build test: one AAA cell + boost converter, battery voltage on D0 (AIN0)
+ * through a 1M / 470k divider -- the wiring of MCK-01 / MCK-02.
+ */
+
+/ {
+    chosen {
+        zmk,battery = &mck_vbatt;
+    };
+
+    mck_vbatt: mck_vbatt {
+        compatible = "mck,aaa-battery";
+        io-channels = <&adc 0>;
+        output-ohms = <470000>;
+        full-ohms = <(1000000 + 470000)>;
+        cells = <1>;
+    };
+};
+
+&adc {
+    status = "okay";
+};

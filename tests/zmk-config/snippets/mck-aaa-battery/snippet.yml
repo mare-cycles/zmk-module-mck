@@ -1,0 +1,4 @@
+name: mck-aaa-battery
+append:
+  EXTRA_DTC_OVERLAY_FILE: mck-aaa-battery.overlay
+  EXTRA_CONF_FILE: mck-aaa-battery.conf

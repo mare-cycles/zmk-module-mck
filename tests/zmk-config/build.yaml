@@ -14,6 +14,16 @@ include:
     shield: tester_xiao
     cmake-args: -DCONFIG_MCK_DEVICE=y
 
+  # MCK-01 / MCK-02 style: AAA battery driver as zmk,battery (state-of-charge
+  # mode) + mck__device RPC with its battery / connection notifications.
+  - artifact: mck_aaa_battery
+    board: xiao_ble//zmk
+    shield: tester_xiao
+    cmake-args: -DCONFIG_ZMK_STUDIO=y -DCONFIG_MCK_DEVICE=y
+    snippets:
+      - studio-rpc-usb-uart
+      - mck-aaa-battery
+
   # DUT for the web UI end-to-end test (see web/e2e/ and README.md's "Web UI
   # end-to-end testing"): the same real studio-rpc-usb-uart image as
   # device_board_with_rpc -- one machine, so it boots and enumerates

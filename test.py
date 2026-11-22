@@ -103,6 +103,20 @@ class WestCommandsTests(unittest.TestCase):
                     ],
                     device=[],
                 ),
+                "mck_aaa_battery": ConfigAndDeviceTree(
+                    config=[
+                        "CONFIG_ZMK_STUDIO=y",
+                        "CONFIG_MCK_DEVICE=y",
+                        "CONFIG_MCK_DEVICE_STUDIO_RPC=y",
+                        'CONFIG_MCK_DEVICE_MODEL="MCK-TEST"',
+                        "CONFIG_MCK_AAA_BATTERY=y",
+                        "CONFIG_ZMK_BATTERY_REPORTING=y",
+                        "CONFIG_ZMK_BATTERY_REPORTING_FETCH_MODE_STATE_OF_CHARGE=y",
+                    ],
+                    device=[
+                        "DT_COMPAT_HAS_OKAY_mck_aaa_battery",
+                    ],
+                ),
                 # DUT of the web UI end-to-end test (web/e2e/): as
                 # device_board_with_rpc, but unlocked -- see build.yaml.
                 "web_e2e": ConfigAndDeviceTree(

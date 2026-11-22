@@ -1,13 +1,58 @@
 syntax = "proto3";
 
+// mck__device: model / connection / battery info for MCK Aquarium.
+// Every request is empty: the firmware answers from its current state.
 package mck.device;
 
-message SampleRequest { int32 value = 1; }
+enum Transport {
+    TRANSPORT_NONE = 0;
+    TRANSPORT_USB = 1;
+    TRANSPORT_BLE = 2;
+}
 
-message SampleResponse { string value = 1; }
+message GetInfoRequest {}
+
+message GetInfoResponse {
+    // CONFIG_MCK_DEVICE_MODEL, e.g. "MCK-02"
+    string model = 1;
+    // CONFIG_MCK_DEVICE_BOARD_REVISION, e.g. "rev1"
+    string board_revision = 2;
+    // Version of this module (zmk-module-mck)
+    string module_version = 3;
+    // Number of split peripherals this central talks to (0 = not split / peripheral)
+    uint32 peripheral_count = 4;
+    // Number of Bluetooth profiles (0 = no BLE)
+    uint32 ble_profile_count = 5;
+}
+
+message GetStatusRequest {}
+
+message Battery {
+    // false: no battery sensor, or no value yet
+    bool known = 1;
+    uint32 percent = 2;
+    // Battery voltage in mV. 0 = unknown (split peripherals only report percent)
+    uint32 millivolts = 3;
+}
+
+message Status {
+    // Transport currently used for HID reports
+    Transport transport = 1;
+    // Active Bluetooth profile (0-based)
+    uint32 ble_profile_index = 2;
+    bool ble_profile_connected = 3;
+    bool usb_powered = 4;
+    // This half (the one Studio talks to)
+    Battery central_battery = 5;
+    // Split peripherals, in ZMK's peripheral order
+    repeated Battery peripheral_batteries = 6;
+}
 
 message Request {
-    oneof request_type { SampleRequest sample = 1; }
+    oneof request_type {
+        GetInfoRequest get_info = 1;
+        GetStatusRequest get_status = 2;
+    }
 }
 
 message ErrorResponse { string message = 1; }
@@ -15,6 +60,12 @@ message ErrorResponse { string message = 1; }
 message Response {
     oneof response_type {
         ErrorResponse error = 1;
-        SampleResponse sample = 2;
+        GetInfoResponse get_info = 2;
+        Status get_status = 3;
     }
+}
+
+// Sent as a CustomNotification payload when the battery or the connection changes.
+message Notification {
+    oneof notification_type { Status status_changed = 1; }
 }

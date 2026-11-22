@@ -1,5 +1,8 @@
 # Nanopb options file for device.proto
-# This defines max sizes for string fields
+# Every string / repeated field needs a fixed size (plain structs, no callbacks).
 
-mck.device.SampleResponse.value    max_size:64
-mck.device.ErrorResponse.message   max_size:64
+mck.device.GetInfoResponse.model              max_size:24
+mck.device.GetInfoResponse.board_revision     max_size:16
+mck.device.GetInfoResponse.module_version     max_size:16
+mck.device.ErrorResponse.message              max_size:64
+mck.device.Status.peripheral_batteries        max_count:4

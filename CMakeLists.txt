@@ -1,7 +1,10 @@
 zephyr_include_directories(include)
-if(CONFIG_MCK_DEVICE)
-    # target_sources(app PRIVATE ...)
 
+if(CONFIG_MCK_AAA_BATTERY)
+    target_sources(app PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src/battery/aaa_battery.c)
+endif()
+
+if(CONFIG_MCK_DEVICE)
     # Split-relay sample: compiled into BOTH split roles, gated on ZMK's own
     # relay Kconfig -- see include/mck/device/template_relay.h.
     if(CONFIG_ZMK_SPLIT_RELAY_EVENT)

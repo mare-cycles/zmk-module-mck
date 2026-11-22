@@ -1,15 +1,44 @@
+menu "MCK (zmk-module-mck)"
+
 config MCK_DEVICE
-    bool "Enable device feature"
+    bool "MCK device info (model, connection, battery) for MCK Aquarium"
 
 if MCK_DEVICE
 
 config MCK_DEVICE_STUDIO_RPC
-    bool "Enable device feature custom Studio RPC"
+    bool "Answer MCK device info over the custom ZMK Studio RPC (mck__device)"
     depends on ZMK_STUDIO
+    default y
+
+config MCK_DEVICE_MODEL
+    string "Model name reported to MCK Aquarium (e.g. MCK-02)"
+    default ""
+
+config MCK_DEVICE_BOARD_REVISION
+    string "Board revision reported to MCK Aquarium (e.g. rev1)"
+    default ""
+
+config MCK_DEVICE_NOTIFY_DELAY_MS
+    int "Wait before sending a status notification, to merge bursts of changes (ms)"
+    default 250
 
 # The split-relay sample (src/split/template_relay.c) has no Kconfig of its
-# own: it follows ZMK's CONFIG_ZMK_SPLIT_RELAY_EVENT directly. Enable that
-# explicitly on BOTH split halves to compile it (the central additionally
-# needs MCK_DEVICE_STUDIO_RPC for the RPC that triggers the relay).
+# own: it follows ZMK's CONFIG_ZMK_SPLIT_RELAY_EVENT directly.
 
-endif
+endif # MCK_DEVICE
+
+DT_COMPAT_MCK_AAA_BATTERY := mck,aaa-battery
+
+config MCK_AAA_BATTERY
+    bool "AAA (NiMH) battery level from a voltage divider"
+    default $(dt_compat_enabled,$(DT_COMPAT_MCK_AAA_BATTERY))
+    depends on SENSOR
+    select ADC
+    help
+      Sensor driver for the "mck,aaa-battery" devicetree node. Reads the
+      battery voltage through a voltage divider (same wiring as ZMK's
+      zmk,battery-voltage-divider) and converts it to percent with a NiMH
+      (eneloop) curve per cell. Use it as the zmk,battery chosen node with
+      CONFIG_ZMK_BATTERY_REPORTING_FETCH_MODE_STATE_OF_CHARGE=y.
+
+endmenu
