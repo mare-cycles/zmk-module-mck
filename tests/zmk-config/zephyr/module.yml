@@ -1,3 +1,5 @@
 build:
   settings:
     board_root: .
+    # tests/zmk-config/snippets/ (e.g. mck-aaa-battery for the build tests)
+    snippet_root: .
