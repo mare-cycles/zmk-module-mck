@@ -52,7 +52,7 @@ except ImportError:  # pragma: no cover - convenience fallback for local dev
         raise
 
 
-SUBSYSTEM_IDENTIFIER = "your_name__template"
+SUBSYSTEM_IDENTIFIER = "mck__device"
 # This template registers exactly one custom subsystem, so its index is
 # deterministically 0.
 KNOWN_SUBSYSTEM_INDEX = 0
@@ -62,7 +62,7 @@ KNOWN_SUBSYSTEM_INDEX = 0
 INVALID_SUBSYSTEM_INDEX = 99
 
 SAMPLE_VALUE = 42
-# See handle_sample_request() in src/studio/template_handler.c.
+# See handle_sample_request() in src/studio/device_handler.c.
 EXPECTED_SAMPLE_RESPONSE = f"Hello from firmware! Received: {SAMPLE_VALUE}"
 
 # attach_dual_cdc_bridge's default bridge name -> monitor object prefix.
@@ -130,14 +130,14 @@ class RenodeWiredSplitModuleTests(unittest.TestCase):
         studio_proto_dir = renode_harness.find_studio_proto_dir(REPO_ROOT)
         cls.studio_pb2 = renode_harness.load_studio_pb2(studio_proto_dir)
 
-        # This module's own proto (package your_name.template) -- protoc
-        # normalizes the hyphenated "your-name" path to the "your_name" package.
+        # This module's own proto (package mck.device) -- protoc
+        # compiles proto/mck/device/device.proto into the mck.device package.
         out_dir = renode_harness.compile_protos(
-            [REPO_ROOT / "proto" / "your-name" / "template" / "template.proto"],
+            [REPO_ROOT / "proto" / "mck" / "device" / "device.proto"],
             include_dirs=[REPO_ROOT / "proto"],
         )
         sys.path.insert(0, str(out_dir))
-        import your_name.template.template_pb2 as template_pb2  # type: ignore
+        import mck.device.template_pb2 as template_pb2  # type: ignore
 
         cls.template_pb2 = template_pb2
 
