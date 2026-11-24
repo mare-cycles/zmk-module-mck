@@ -1,0 +1,26 @@
+/*
+ * Build test: an IQS5xx trackpad on the XIAO's I2C, wired like the GRT65W rev1
+ * (RDY on D3, NRST on D6, SDA / SCL on D4 / D5).
+ */
+
+/ {
+    mck_trackpad_listener: mck_trackpad_listener {
+        compatible = "zmk,input-listener";
+        device = <&mck_trackpad>;
+    };
+};
+
+&xiao_i2c {
+    status = "okay";
+
+    mck_trackpad: iqs5xx@74 {
+        compatible = "mck,iqs5xx";
+        reg = <0x74>;
+        rdy-gpios = <&xiao_d 3 GPIO_ACTIVE_HIGH>;
+        reset-gpios = <&xiao_d 6 GPIO_ACTIVE_LOW>;
+        one-finger-tap;
+        two-finger-tap;
+        scroll;
+        switch-xy;
+    };
+};

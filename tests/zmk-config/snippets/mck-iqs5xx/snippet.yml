@@ -1,0 +1,4 @@
+name: mck-iqs5xx
+append:
+  EXTRA_DTC_OVERLAY_FILE: mck-iqs5xx.overlay
+  EXTRA_CONF_FILE: mck-iqs5xx.conf

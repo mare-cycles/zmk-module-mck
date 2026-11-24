@@ -1,0 +1,74 @@
+# Azoteq IQS5xx trackpad (IQS550 / IQS572 / IQS525), I2C.
+# Driver: src/trackpad/iqs5xx.c (MIT, Mariano Uvalle + changes for the GRT65W / MCK).
+# Same properties as azoteq,iqs5xx in zmk-config-grt65w (2026-11-25 D-136 T1 moved it here).
+
+description: |
+  Azoteq IQS5xx trackpad, using the I2C interface. The driver keeps the module's
+  own (non-volatile) tuning and only touches the bits it needs.
+
+compatible: "mck,iqs5xx"
+
+include: i2c-device.yaml
+
+properties:
+  rdy-gpios:
+    type: phandle-array
+    required: true
+    description: "Data Ready pin (the driver reads on its rising edge)"
+
+  reset-gpios:
+    type: phandle-array
+    description: "Reset pin"
+
+  one-finger-tap:
+    type: boolean
+    description: "Register single finger tap gestures and report them as a left click"
+
+  press-and-hold:
+    type: boolean
+    description: "Register press and hold gestures and report them as a left click until released"
+
+  press-and-hold-time:
+    type: int
+    description: "Time in ms (in addition to the tap time) it takes to register a press and hold gesture"
+    default: 250
+
+  two-finger-tap:
+    type: boolean
+    description: "Register two finger tap gestures and report them as a right click"
+
+  scroll:
+    type: boolean
+    description: "Register and report scroll gestures, both vertical and horizontal scroll is supported"
+
+  natural-scroll-x:
+    type: boolean
+    description: "Whether content should track finger movement when scrolling on the x axis."
+
+  natural-scroll-y:
+    type: boolean
+    description: "Whether content should track finger movement when scrolling on the y axis."
+
+  switch-xy:
+    type: boolean
+    description: "Swap the x and y axes"
+
+  flip-x:
+    type: boolean
+    description: "Invert the direction of the x axis"
+
+  flip-y:
+    type: boolean
+    description: "Invert the direction of the y axis"
+
+  bottom-beta:
+    type: int
+    description: |
+      Amount of filtering applied at slow speeds (0: most filtering, 255: least).
+      No default: when omitted, the module's own value is kept.
+
+  stationary-threshold:
+    type: int
+    description: |
+      How far a finger must move (in pixels) to not be considered stationary.
+      No default: when omitted, the module's own value is kept.

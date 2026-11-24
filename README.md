@@ -14,6 +14,9 @@ It works with any ZMK keyboard, and provides:
   revision, connection (USB / Bluetooth profile) and battery levels, and sends a notification
   when they change. With `CONFIG_MCK_SETTINGS` it also reads / changes the battery type and the
   idle / sleep times (shared with split peripherals).
+- **`mck,iqs5xx`** — input driver for Azoteq IQS5xx trackpads (GR-Trackpad65, TPS65, TPS43).
+  Cursor, IC taps (left / right click) and two finger scroll. It keeps the trackpad module's own
+  tuning (auto re-ATI, palm rejection, filters) and only touches the bits it needs.
 
 > Requires ZMK with the **unofficial custom Studio RPC protocol**
 > ([cormoran/zmk](https://github.com/cormoran/zmk), branches `main+custom-studio-protocol` or
@@ -124,6 +127,36 @@ CONFIG_ZMK_SPLIT_RELAY_EVENT=y
 - Split: each half keeps its own copy. The central sends a change as a split relay event
   (`mks`) and sends it again when a peripheral reconnects.
 
+### 5. Trackpad: `mck,iqs5xx`
+
+```dts
+&xiao_i2c {
+    status = "okay";
+
+    trackpad: iqs5xx@74 {
+        compatible = "mck,iqs5xx";
+        reg = <0x74>;
+        rdy-gpios = <&xiao_d 3 GPIO_ACTIVE_HIGH>;    // required: the driver reads on RDY
+        reset-gpios = <&xiao_d 6 GPIO_ACTIVE_LOW>;
+        one-finger-tap;     // BTN_0
+        two-finger-tap;     // BTN_1
+        scroll;             // two finger scroll -> REL_WHEEL / REL_HWHEEL
+        switch-xy;          // GR-Trackpad65's own orientation
+        // bottom-beta / stationary-threshold: omit to keep the module's values
+    };
+};
+
+/ {
+    trackpad_listener: trackpad_listener {
+        compatible = "zmk,input-listener";
+        device = <&trackpad>;
+    };
+};
+```
+
+Enabled automatically by the devicetree node (`CONFIG_MCK_IQS5XX`). `CONFIG_MCK_IQS5XX_BLOCK_READ`
+(default y) reads the status registers in one I2C transaction.
+
 ## Development
 
 Tests run on GitHub Actions (`.github/workflows/zmk-module.yml`): build tests in
@@ -144,3 +177,4 @@ MIT — see [LICENSE](LICENSE).
 
 - Created from [cormoran/zmk-module-template-with-custom-studio-rpc](https://github.com/cormoran/zmk-module-template-with-custom-studio-rpc) (MIT). <!-- zmk-module-template:keep -->
 - `src/battery/aaa_battery.c` is based on ZMK's `battery_voltage_divider.c` (MIT, © The ZMK Contributors).
+- `src/trackpad/iqs5xx.c` / `iqs5xx.h` are based on [AYM1607/zmk-driver-azoteq-iqs5xx](https://github.com/AYM1607/zmk-driver-azoteq-iqs5xx) 27321f0 (MIT, © 2025 Mariano Uvalle; full text in [`src/trackpad/LICENSE.iqs5xx`](src/trackpad/LICENSE.iqs5xx)). Changes are marked `GRT65W:` / `MCK:`.

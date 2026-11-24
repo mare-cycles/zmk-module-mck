@@ -61,4 +61,29 @@ config MCK_AAA_BATTERY
       (eneloop) curve per cell. Use it as the zmk,battery chosen node with
       CONFIG_ZMK_BATTERY_REPORTING_FETCH_MODE_STATE_OF_CHARGE=y.
 
+DT_COMPAT_MCK_IQS5XX := mck,iqs5xx
+
+config MCK_IQS5XX
+    bool "Azoteq IQS5xx trackpad (mck,iqs5xx)"
+    default $(dt_compat_enabled,$(DT_COMPAT_MCK_IQS5XX))
+    depends on GPIO
+    depends on I2C
+    depends on INPUT
+    help
+      Input driver for the "mck,iqs5xx" devicetree node (Azoteq IQS5xx trackpads
+      such as GR-Trackpad65 / TPS65 / TPS43). Reports REL_X / REL_Y, two finger
+      scroll as REL_WHEEL / REL_HWHEEL and taps as BTN_0 / BTN_1.
+
+if MCK_IQS5XX
+
+config MCK_IQS5XX_BLOCK_READ
+    bool "Read the status registers in one I2C transaction"
+    default y
+    help
+      Read gesture events, system info, the finger count and the relative
+      movement (0x000D..0x0015) in one transaction on every RDY event,
+      instead of one transaction per register.
+
+endif # MCK_IQS5XX
+
 endmenu

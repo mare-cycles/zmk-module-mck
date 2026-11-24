@@ -4,6 +4,10 @@ if(CONFIG_MCK_AAA_BATTERY)
     target_sources(app PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src/battery/aaa_battery.c)
 endif()
 
+if(CONFIG_MCK_IQS5XX)
+    target_sources(app PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src/trackpad/iqs5xx.c)
+endif()
+
 if(CONFIG_MCK_SETTINGS)
     target_sources(app PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src/settings/mck_settings.c)
 endif()

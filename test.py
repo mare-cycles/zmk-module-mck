@@ -134,6 +134,25 @@ class WestCommandsTests(unittest.TestCase):
                     ],
                     device=[],
                 ),
+                "mck_iqs5xx": ConfigAndDeviceTree(
+                    config=[
+                        "CONFIG_MCK_IQS5XX=y",
+                        "CONFIG_MCK_IQS5XX_BLOCK_READ=y",
+                        "CONFIG_ZMK_POINTING=y",
+                    ],
+                    device=[
+                        "DT_COMPAT_HAS_OKAY_mck_iqs5xx",
+                    ],
+                ),
+                "mck_iqs5xx_no_block_read": ConfigAndDeviceTree(
+                    config=[
+                        "CONFIG_MCK_IQS5XX=y",
+                        "# CONFIG_MCK_IQS5XX_BLOCK_READ is not set",
+                    ],
+                    device=[
+                        "DT_COMPAT_HAS_OKAY_mck_iqs5xx",
+                    ],
+                ),
             }
         )
 
