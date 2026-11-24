@@ -60,7 +60,9 @@ static int iqs5xx_read_block(const struct device *dev, uint16_t reg, uint8_t *bu
     return iqs5xx_write_read_retry(&config->i2c, reg_buf, sizeof(reg_buf), buf, len);
 }
 
-static int iqs5xx_read_reg16(const struct device *dev, uint16_t reg, uint16_t *val) {
+// MCK: Unused when the status is read in one block (CONFIG_MCK_IQS5XX_BLOCK_READ).
+static __maybe_unused int iqs5xx_read_reg16(const struct device *dev, uint16_t reg,
+                                            uint16_t *val) {
     uint8_t buf[2];
     int ret = iqs5xx_read_block(dev, reg, buf, sizeof(buf));
     if (ret < 0) {
