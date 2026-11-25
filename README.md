@@ -157,6 +157,22 @@ CONFIG_ZMK_SPLIT_RELAY_EVENT=y
 Enabled automatically by the devicetree node (`CONFIG_MCK_IQS5XX`). `CONFIG_MCK_IQS5XX_BLOCK_READ`
 (default y) reads the status registers in one I2C transaction.
 
+**Gestures on key positions.** With `gesture-positions`, a gesture presses a key position
+instead of reporting a button, so what it does follows the active layer and can be changed in
+ZMK Studio. Add the positions to the matrix transform (rows the kscan never reports) and to the
+physical layout, and give them bindings on every layer.
+
+```dts
+&trackpad {
+    // 1 / 2 finger tap, then (later) 3 / 4 finger tap, 3 finger swipe up / right / down / left,
+    // 4 finger swipe up / right / down / left. Entries can be left out from the end.
+    gesture-positions = <3 4>;
+    gesture-release-ms = <100>;   // default
+};
+```
+
+Three / four finger gestures are not detected yet.
+
 ## Development
 
 Tests run on GitHub Actions (`.github/workflows/zmk-module.yml`): build tests in

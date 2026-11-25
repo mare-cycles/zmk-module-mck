@@ -153,6 +153,16 @@ class WestCommandsTests(unittest.TestCase):
                         "DT_COMPAT_HAS_OKAY_mck_iqs5xx",
                     ],
                 ),
+                "mck_iqs5xx_positions": ConfigAndDeviceTree(
+                    config=[
+                        "CONFIG_MCK_IQS5XX=y",
+                    ],
+                    device=[
+                        "DT_COMPAT_HAS_OKAY_mck_iqs5xx",
+                        "_P_gesture_positions_LEN 2",
+                        "_P_gesture_release_ms 50",
+                    ],
+                ),
             }
         )
 

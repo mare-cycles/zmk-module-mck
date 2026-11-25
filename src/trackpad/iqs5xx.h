@@ -145,7 +145,22 @@ struct iqs5xx_config {
     // GRT65W: -1 means "not set in the devicetree, keep the module's value".
     int16_t bottom_beta;
     int16_t stationary_threshold;
+
+    // MCK: Key positions pressed by the gestures (gesture-positions, IQS5XX_GESTURE_*).
+    // NULL / 0 when the property is not set.
+    const uint32_t *gesture_positions;
+    uint8_t gesture_positions_len;
+    uint16_t gesture_release_ms;
 };
+
+// MCK: Indexes into gesture-positions (see dts/bindings/input/mck,iqs5xx.yaml).
+#define IQS5XX_GESTURE_TAP_1 0
+#define IQS5XX_GESTURE_TAP_2 1
+#define IQS5XX_GESTURE_TAP_3 2
+#define IQS5XX_GESTURE_TAP_4 3
+#define IQS5XX_GESTURE_SWIPE_3_UP 4
+#define IQS5XX_GESTURE_SWIPE_4_UP 8
+#define IQS5XX_GESTURE_COUNT 12
 
 struct iqs5xx_data {
     const struct device *dev;
@@ -162,4 +177,6 @@ struct iqs5xx_data {
     int16_t scroll_y_acc;
     // GRT65W: Whether the register readback has been logged since the last setup.
     bool config_logged;
+    // MCK: The key position a gesture holds pressed, or -1.
+    int32_t pressed_position;
 };

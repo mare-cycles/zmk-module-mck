@@ -61,3 +61,11 @@ include:
     shield: tester_xiao
     cmake-args: -DCONFIG_MCK_IQS5XX_BLOCK_READ=n
     snippet: mck-iqs5xx
+
+  # The taps press key positions (gesture-positions) instead of reporting buttons.
+  - artifact: mck_iqs5xx_positions
+    board: xiao_ble//zmk
+    shield: tester_xiao
+    snippets:
+      - mck-iqs5xx
+      - mck-iqs5xx-positions

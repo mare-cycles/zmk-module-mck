@@ -72,3 +72,24 @@ properties:
     description: |
       How far a finger must move (in pixels) to not be considered stationary.
       No default: when omitted, the module's own value is kept.
+
+  # MCK: 2026-11-25 (D-136 T2)
+  gesture-positions:
+    type: array
+    description: |
+      Key positions (in the keymap) that the gestures press, so that what a gesture does
+      is set per layer in the keymap and can be changed in ZMK Studio. The positions must
+      exist in the matrix transform / physical layout (e.g. extra rows that the kscan
+      never reports). In this order (an entry may be left out from the end):
+        0: one finger tap     1: two finger tap
+        2: three finger tap   3: four finger tap
+        4-7: three finger swipe up, right, down, left
+        8-11: four finger swipe up, right, down, left
+      The driver presses the position and releases it gesture-release-ms later.
+      Gestures without a position keep the old behavior (one / two finger tap are
+      reported as BTN_0 / BTN_1). Three / four finger gestures are not detected yet.
+
+  gesture-release-ms:
+    type: int
+    default: 100
+    description: "How long (ms) a gesture keeps its key position pressed"

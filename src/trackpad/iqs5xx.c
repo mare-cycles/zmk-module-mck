@@ -11,6 +11,9 @@
  * MCK: 2026-11-25 (D-136 T1) moved here from mare-cycles/zmk-config-grt65w (drivers/input),
  * so that the trackpad features of MCK Aquarium can live next to it. Behavior is unchanged,
  * except that the status registers are read in one I2C transaction (MCK_IQS5XX_BLOCK_READ).
+ *
+ * MCK: 2026-11-25 (D-136 T2) the taps can press key positions (gesture-positions) instead of
+ * reporting BTN_0 / BTN_1.
  */
 
 #define DT_DRV_COMPAT mck_iqs5xx
@@ -23,6 +26,9 @@
 #include <zephyr/input/input.h>
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
+
+#include <zmk/events/position_state_changed.h>
+#include <zmk/matrix.h>
 
 #include "iqs5xx.h"
 
@@ -98,9 +104,63 @@ static int iqs5xx_end_comm_window(const struct device *dev) {
     return i2c_write_dt(&config->i2c, buf, sizeof(buf));
 }
 
+// MCK: Gestures can press a key position (gesture-positions) instead of a button, so that what
+// they do follows the active layer and can be changed in ZMK Studio. The press and the release
+// are raised from the system work queue, like the kscan does for the real keys.
+static void iqs5xx_raise_position(uint32_t position, bool pressed) {
+    raise_zmk_position_state_changed(
+        (struct zmk_position_state_changed){.source = ZMK_POSITION_STATE_CHANGE_SOURCE_LOCAL,
+                                            .state = pressed,
+                                            .position = position,
+                                            .timestamp = k_uptime_get()});
+}
+
+static void iqs5xx_release_position(struct iqs5xx_data *data) {
+    if (data->pressed_position < 0) {
+        return;
+    }
+
+    uint32_t position = data->pressed_position;
+    data->pressed_position = -1;
+    LOG_DBG("Releasing gesture position %u", position);
+    iqs5xx_raise_position(position, false);
+}
+
+// MCK: Press the key position of a gesture (IQS5XX_GESTURE_*) and release it later.
+// Returns false when the gesture has no position, so the caller can fall back to a button.
+static bool iqs5xx_press_gesture(const struct device *dev, uint8_t gesture) {
+    const struct iqs5xx_config *config = dev->config;
+    struct iqs5xx_data *data = dev->data;
+
+    if (gesture >= config->gesture_positions_len) {
+        return false;
+    }
+
+    uint32_t position = config->gesture_positions[gesture];
+    if (position >= ZMK_KEYMAP_LEN) {
+        LOG_WRN("Gesture %d: position %u is not in the keymap (%d keys)", gesture, position,
+                (int)ZMK_KEYMAP_LEN);
+        return false;
+    }
+
+    // A gesture that comes before the last one was released releases it first.
+    k_work_cancel_delayable(&data->button_release_work);
+    iqs5xx_release_position(data);
+
+    LOG_DBG("Gesture %d presses position %u", gesture, position);
+    data->pressed_position = position;
+    iqs5xx_raise_position(position, true);
+    // The release work also releases a synthetic button that was still pressed.
+    k_work_schedule(&data->button_release_work, K_MSEC(config->gesture_release_ms));
+    return true;
+}
+
 static void iqs5xx_button_release_work_handler(struct k_work *work) {
     struct k_work_delayable *dwork = k_work_delayable_from_work(work);
     struct iqs5xx_data *data = CONTAINER_OF(dwork, struct iqs5xx_data, button_release_work);
+
+    // MCK: Release the key position of a gesture.
+    iqs5xx_release_position(data);
 
     // TODO: This loop should only deactivate one button.
     // Log a warning when that is not the case.
@@ -264,6 +324,10 @@ static void iqs5xx_work_handler(struct k_work *work) {
         LOG_INF("Hold became inactive");
         input_report_key(dev, LEFT_BUTTON_CODE, 0, true, K_FOREVER);
         data->active_hold = false;
+    } else if (button_pressed &&
+               iqs5xx_press_gesture(dev, button_code == INPUT_BTN_0 ? IQS5XX_GESTURE_TAP_1
+                                                                     : IQS5XX_GESTURE_TAP_2)) {
+        // MCK: The tap pressed its key position (gesture-positions).
     } else if (button_pressed) {
         // Cancel any pending release.
         k_work_cancel_delayable(&data->button_release_work);
@@ -473,6 +537,7 @@ static int iqs5xx_init(const struct device *dev) {
     }
 
     data->dev = dev;
+    data->pressed_position = -1;
     k_work_init(&data->work, iqs5xx_work_handler);
     k_work_init_delayable(&data->button_release_work, iqs5xx_button_release_work_handler);
 
@@ -537,7 +602,21 @@ static int iqs5xx_init(const struct device *dev) {
     return 0;
 }
 
+// MCK: gesture-positions, when set.
+#define IQS5XX_GESTURE_POSITIONS_DEFINE(n)                                                         \
+    IF_ENABLED(DT_INST_NODE_HAS_PROP(n, gesture_positions),                                        \
+               (BUILD_ASSERT(DT_INST_PROP_LEN(n, gesture_positions) <= IQS5XX_GESTURE_COUNT,       \
+                             "gesture-positions has more entries than there are gestures");        \
+                static const uint32_t iqs5xx_gesture_positions_##n[] =                             \
+                    DT_INST_PROP(n, gesture_positions);))
+
+#define IQS5XX_GESTURE_POSITIONS_INIT(n)                                                           \
+    IF_ENABLED(DT_INST_NODE_HAS_PROP(n, gesture_positions),                                        \
+               (.gesture_positions = iqs5xx_gesture_positions_##n,                                 \
+                .gesture_positions_len = DT_INST_PROP_LEN(n, gesture_positions), ))
+
 #define IQS5XX_INIT(n)                                                                             \
+    IQS5XX_GESTURE_POSITIONS_DEFINE(n)                                                             \
     static struct iqs5xx_data iqs5xx_data_##n;                                                     \
     static const struct iqs5xx_config iqs5xx_config_##n = {                                        \
         .i2c = I2C_DT_SPEC_INST_GET(n),                                                            \
@@ -555,6 +634,8 @@ static int iqs5xx_init(const struct device *dev) {
         .flip_y = DT_INST_PROP(n, flip_y),                                                         \
         .bottom_beta = DT_INST_PROP_OR(n, bottom_beta, -1),                                        \
         .stationary_threshold = DT_INST_PROP_OR(n, stationary_threshold, -1),                      \
+        IQS5XX_GESTURE_POSITIONS_INIT(n)                                                           \
+        .gesture_release_ms = DT_INST_PROP(n, gesture_release_ms),                                 \
     };                                                                                             \
     DEVICE_DT_INST_DEFINE(n, iqs5xx_init, NULL, &iqs5xx_data_##n, &iqs5xx_config_##n, POST_KERNEL, \
                           CONFIG_INPUT_INIT_PRIORITY, NULL);

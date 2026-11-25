@@ -1,0 +1,9 @@
+/*
+ * Build test (use after the mck-iqs5xx snippet): the one / two finger taps press the key
+ * positions 0 / 1 (gesture-positions) instead of reporting BTN_0 / BTN_1.
+ */
+
+&mck_trackpad {
+    gesture-positions = <0 1>;
+    gesture-release-ms = <50>;
+};
