@@ -345,8 +345,8 @@ static void iqs5xx_touch_log(struct iqs5xx_data *data, const struct iqs5xx_statu
 #if IS_ENABLED(CONFIG_MCK_IQS5XX_GESTURES)
 // MCK: 2026-11-26 (D-136 T3) 3 / 4 finger taps and swipes. The values come from a touch log of
 // the GRT65W rev1 (taps: 170-350 ms, the fingers' center moves up to 30; swipes: 335 or more).
-// Four fingers often flicker between 3 and 4 (every ~20 ms) and the center jumps when the count
-// changes, so the movement only adds up between samples with the same finger count.
+// Four fingers often flicker between 3 and 4 (every ~20 ms) and the center of all the fingers
+// jumps when the count changes, so the movement follows each finger in its slot.
 static bool iqs5xx_gestures_enabled(const struct iqs5xx_config *config) {
     return config->gesture_positions_len > IQS5XX_GESTURE_TAP_3;
 }
@@ -355,12 +355,9 @@ static bool iqs5xx_gestures_enabled(const struct iqs5xx_config *config) {
 static bool iqs5xx_gestures_update(const struct device *dev, const struct iqs5xx_status *st) {
     struct iqs5xx_data *data = dev->data;
     uint8_t count = 0;
-    int32_t sum_x = 0, sum_y = 0;
     for (int i = 0; i < IQS5XX_MAX_FINGERS; i++) {
         if (st->fingers[i].strength > 0) {
             count++;
-            sum_x += st->fingers[i].x;
-            sum_y += st->fingers[i].y;
         }
     }
 
@@ -374,27 +371,36 @@ static bool iqs5xx_gestures_update(const struct device *dev, const struct iqs5xx
         data->gest.start_ms = now;
     }
 
-    int32_t elapsed = (int32_t)(now - data->gest.start_ms);
-    if (count > 0) {
-        int32_t cx = sum_x / count;
-        int32_t cy = sum_y / count;
-        if (count == data->gest.fingers) {
-            data->gest.move_x += cx - data->gest.last_x;
-            data->gest.move_y += cy - data->gest.last_y;
-            data->gest.peak = MAX(data->gest.peak,
-                                  MAX(abs(data->gest.move_x), abs(data->gest.move_y)));
+    // Movement of the fingers that were down in the last sample too. A finger keeps its slot
+    // while it stays down, so a finger coming and going (4 fingers flicker between 3 and 4
+    // every ~20 ms) does not move the result, unlike the center of all the fingers.
+    int32_t dx = 0, dy = 0, both = 0;
+    for (int i = 0; i < IQS5XX_MAX_FINGERS; i++) {
+        bool down = st->fingers[i].strength > 0;
+        if (down && data->gest.last[i].down) {
+            dx += (int32_t)st->fingers[i].x - data->gest.last[i].x;
+            dy += (int32_t)st->fingers[i].y - data->gest.last[i].y;
+            both++;
         }
-        data->gest.last_x = cx;
-        data->gest.last_y = cy;
-        if (count > data->gest.max_fingers) {
-            // Count the movement from when the most fingers came down (the 3rd / 4th finger
-            // lands 15-80 ms after the first), so a 2 finger scroll does not count as a swipe.
-            data->gest.max_fingers = count;
-            data->gest.move_x = data->gest.move_y = 0;
-            data->gest.peak = 0;
-        }
+        data->gest.last[i].down = down;
+        data->gest.last[i].x = st->fingers[i].x;
+        data->gest.last[i].y = st->fingers[i].y;
     }
-    data->gest.fingers = count;
+    if (both > 0) {
+        data->gest.move_x += dx / both;
+        data->gest.move_y += dy / both;
+        data->gest.peak =
+            MAX(data->gest.peak, MAX(abs(data->gest.move_x), abs(data->gest.move_y)));
+    }
+
+    int32_t elapsed = (int32_t)(now - data->gest.start_ms);
+    if (count > data->gest.max_fingers) {
+        // Count the movement from when the most fingers came down (the 3rd / 4th finger
+        // lands 15-80 ms after the first), so a 2 finger scroll does not count as a swipe.
+        data->gest.max_fingers = count;
+        data->gest.move_x = data->gest.move_y = 0;
+        data->gest.peak = 0;
+    }
 
     bool multi = data->gest.max_fingers >= 3;
     bool four = data->gest.max_fingers >= 4;

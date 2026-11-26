@@ -206,12 +206,14 @@ struct iqs5xx_data {
         // A swipe was pressed, so nothing more (no tap either) until all fingers are up.
         bool done;
         int64_t start_ms;
-        uint8_t fingers;
         uint8_t max_fingers;
-        // Center of the fingers in the last sample, and its movement since the most fingers
-        // came down, added up between samples with the same finger count (and the largest
-        // axis of that movement so far).
-        int32_t last_x, last_y;
+        // Each finger (the IC keeps a finger in its slot) in the last sample, and the movement
+        // since the most fingers came down: per sample, the average movement of the fingers
+        // that were down in both samples (and the largest axis of that movement so far).
+        struct {
+            bool down;
+            uint16_t x, y;
+        } last[IQS5XX_MAX_FINGERS];
         int32_t move_x, move_y;
         int32_t peak;
     } gest;
