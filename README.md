@@ -173,6 +173,10 @@ physical layout, and give them bindings on every layer.
 
 Three / four finger gestures are not detected yet.
 
+`CONFIG_MCK_IQS5XX_TOUCH_LOG` (for a USB logging build) logs every touch: the finger count as
+it changes, and when all fingers are up, the most fingers, the duration, how far their center
+moved and the gestures the IC reported.
+
 ## Development
 
 Tests run on GitHub Actions (`.github/workflows/zmk-module.yml`): build tests in

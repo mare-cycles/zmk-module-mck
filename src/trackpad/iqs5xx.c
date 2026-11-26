@@ -19,6 +19,7 @@
 #define DT_DRV_COMPAT mck_iqs5xx
 
 #include <stdlib.h>
+#include <string.h>
 #include <zephyr/dt-bindings/input/input-event-codes.h>
 #include <zephyr/device.h>
 #include <zephyr/drivers/gpio.h>
@@ -184,12 +185,27 @@ struct iqs5xx_status {
     uint8_t num_fingers;
     int16_t rel_x;
     int16_t rel_y;
+#if IS_ENABLED(CONFIG_MCK_IQS5XX_TOUCH_LOG)
+    struct {
+        uint16_t x;
+        uint16_t y;
+        uint16_t strength;
+    } fingers[IQS5XX_MAX_FINGERS];
+#endif
 };
 
+#if IS_ENABLED(CONFIG_MCK_IQS5XX_TOUCH_LOG)
+// MCK: Up to the area of finger 5 (0x0038).
+#define IQS5XX_STATUS_END (IQS5XX_FINGER_DATA + IQS5XX_FINGER_SIZE * IQS5XX_MAX_FINGERS)
+#else
+#define IQS5XX_STATUS_END (IQS5XX_REL_Y + 2)
+#endif
+
 #if IS_ENABLED(CONFIG_MCK_IQS5XX_BLOCK_READ)
-// MCK: 0x000D (gesture events 0) .. 0x0015 (relative Y low byte) are consecutive.
+// MCK: 0x000D (gesture events 0) .. 0x0015 (relative Y low byte) are consecutive
+// (with MCK_IQS5XX_TOUCH_LOG, also the finger data up to 0x0038).
 static int iqs5xx_read_status(const struct device *dev, struct iqs5xx_status *st) {
-    uint8_t buf[IQS5XX_REL_Y + 2 - IQS5XX_GESTURE_EVENTS_0];
+    uint8_t buf[IQS5XX_STATUS_END - IQS5XX_GESTURE_EVENTS_0];
     int ret = iqs5xx_read_block(dev, IQS5XX_GESTURE_EVENTS_0, buf, sizeof(buf));
     if (ret < 0) {
         LOG_ERR("Failed to read the status registers: %d", ret);
@@ -204,6 +220,14 @@ static int iqs5xx_read_status(const struct device *dev, struct iqs5xx_status *st
     st->num_fingers = IQS5XX_AT(IQS5XX_NUM_FINGERS);
     st->rel_x = (int16_t)((IQS5XX_AT(IQS5XX_REL_X) << 8) | IQS5XX_AT(IQS5XX_REL_X + 1));
     st->rel_y = (int16_t)((IQS5XX_AT(IQS5XX_REL_Y) << 8) | IQS5XX_AT(IQS5XX_REL_Y + 1));
+#if IS_ENABLED(CONFIG_MCK_IQS5XX_TOUCH_LOG)
+    for (int i = 0; i < IQS5XX_MAX_FINGERS; i++) {
+        const uint16_t f = IQS5XX_FINGER_DATA + IQS5XX_FINGER_SIZE * i;
+        st->fingers[i].x = (IQS5XX_AT(f) << 8) | IQS5XX_AT(f + 1);
+        st->fingers[i].y = (IQS5XX_AT(f + 2) << 8) | IQS5XX_AT(f + 3);
+        st->fingers[i].strength = (IQS5XX_AT(f + 4) << 8) | IQS5XX_AT(f + 5);
+    }
+#endif
 #undef IQS5XX_AT
     return 0;
 }
@@ -256,6 +280,65 @@ static int iqs5xx_read_status(const struct device *dev, struct iqs5xx_status *st
 }
 #endif
 
+#if IS_ENABLED(CONFIG_MCK_IQS5XX_TOUCH_LOG)
+// MCK: Follow one touch and log it (see CONFIG_MCK_IQS5XX_TOUCH_LOG). Fingers with a touch
+// strength are counted; their center is the average of their absolute positions.
+static void iqs5xx_touch_log(struct iqs5xx_data *data, const struct iqs5xx_status *st) {
+    uint8_t count = 0;
+    int32_t sum_x = 0, sum_y = 0;
+    for (int i = 0; i < IQS5XX_MAX_FINGERS; i++) {
+        if (st->fingers[i].strength > 0) {
+            count++;
+            sum_x += st->fingers[i].x;
+            sum_y += st->fingers[i].y;
+        }
+    }
+
+    int64_t now = k_uptime_get();
+    if (!data->touch.active) {
+        if (count == 0) {
+            return;
+        }
+        memset(&data->touch, 0, sizeof(data->touch));
+        data->touch.active = true;
+        data->touch.start_ms = now;
+    }
+
+    data->touch.samples++;
+    data->touch.ic_events_0 |= st->gesture_events_0;
+    data->touch.ic_events_1 |= st->gesture_events_1;
+
+    if (count != data->touch.fingers) {
+        LOG_INF("tp: %u -> %u fingers (reg %u) at %d ms", data->touch.fingers, count,
+                st->num_fingers, (int)(now - data->touch.start_ms));
+        data->touch.fingers = count;
+    }
+
+    if (count > data->touch.max_fingers) {
+        data->touch.max_fingers = count;
+        data->touch.ref_x = sum_x / count;
+        data->touch.ref_y = sum_y / count;
+        data->touch.move_x = data->touch.move_y = 0;
+        data->touch.peak_x = data->touch.peak_y = 0;
+    } else if (count > 0 && count == data->touch.max_fingers) {
+        data->touch.move_x = sum_x / count - data->touch.ref_x;
+        data->touch.move_y = sum_y / count - data->touch.ref_y;
+        data->touch.peak_x = MAX(data->touch.peak_x, abs(data->touch.move_x));
+        data->touch.peak_y = MAX(data->touch.peak_y, abs(data->touch.move_y));
+    }
+
+    if (count == 0) {
+        LOG_INF("tp: touch max %u fingers, %d ms, move (%d, %d), peak (%d, %d), at (%d, %d), "
+                "%u samples, ic 0x%02X/0x%02X",
+                data->touch.max_fingers, (int)(now - data->touch.start_ms), data->touch.move_x,
+                data->touch.move_y, data->touch.peak_x, data->touch.peak_y, data->touch.ref_x,
+                data->touch.ref_y, data->touch.samples, data->touch.ic_events_0,
+                data->touch.ic_events_1);
+        data->touch.active = false;
+    }
+}
+#endif
+
 static void iqs5xx_work_handler(struct k_work *work) {
     struct iqs5xx_data *data = CONTAINER_OF(work, struct iqs5xx_data, work);
     const struct device *dev = data->dev;
@@ -287,6 +370,10 @@ static void iqs5xx_work_handler(struct k_work *work) {
         }
         return;
     }
+
+#if IS_ENABLED(CONFIG_MCK_IQS5XX_TOUCH_LOG)
+    iqs5xx_touch_log(data, &st);
+#endif
 
     bool tp_movement = (st.sys_info_1 & IQS5XX_TP_MOVEMENT) != 0;
     bool scroll = (st.gesture_events_1 & IQS5XX_SCROLL) != 0;

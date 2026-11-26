@@ -84,6 +84,16 @@ config MCK_IQS5XX_BLOCK_READ
       movement (0x000D..0x0015) in one transaction on every RDY event,
       instead of one transaction per register.
 
+config MCK_IQS5XX_TOUCH_LOG
+    bool "Log every touch (finger count, duration, movement) for tuning"
+    depends on MCK_IQS5XX_BLOCK_READ
+    help
+      Also read the absolute data of fingers 1-5 (0x0016..0x0038) and log,
+      at the info level, when the finger count changes and a summary when
+      all fingers are lifted: the most fingers, how long, how far their
+      center moved and the gestures the IC reported. For a USB logging
+      build, to choose the values of the 3 / 4 finger gestures.
+
 endif # MCK_IQS5XX
 
 endmenu

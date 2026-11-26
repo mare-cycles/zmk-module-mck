@@ -69,3 +69,10 @@ include:
     snippets:
       - mck-iqs5xx
       - mck-iqs5xx-positions
+
+  # Touch log for tuning the 3 / 4 finger gestures (USB logging builds).
+  - artifact: mck_iqs5xx_touch_log
+    board: xiao_ble//zmk
+    shield: tester_xiao
+    cmake-args: -DCONFIG_MCK_IQS5XX_TOUCH_LOG=y
+    snippet: mck-iqs5xx

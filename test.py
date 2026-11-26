@@ -163,6 +163,15 @@ class WestCommandsTests(unittest.TestCase):
                         "_P_gesture_release_ms 50",
                     ],
                 ),
+                "mck_iqs5xx_touch_log": ConfigAndDeviceTree(
+                    config=[
+                        "CONFIG_MCK_IQS5XX_BLOCK_READ=y",
+                        "CONFIG_MCK_IQS5XX_TOUCH_LOG=y",
+                    ],
+                    device=[
+                        "DT_COMPAT_HAS_OKAY_mck_iqs5xx",
+                    ],
+                ),
             }
         )
 

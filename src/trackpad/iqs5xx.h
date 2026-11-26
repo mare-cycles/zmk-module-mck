@@ -16,6 +16,10 @@
 #define IQS5XX_ABS_Y 0x0018          // 2 bytes.
 #define IQS5XX_TOUCH_STRENGTH 0x001A // 2 bytes.
 #define IQS5XX_TOUCH_AREA 0x001C
+// MCK: Fingers 1-5 each have abs X (2), abs Y (2), touch strength (2) and area (1) from 0x0016.
+#define IQS5XX_FINGER_DATA IQS5XX_ABS_X
+#define IQS5XX_FINGER_SIZE 7
+#define IQS5XX_MAX_FINGERS 5
 
 #define IQS5XX_BOTTOM_BETA 0x0637
 #define IQS5XX_STATIONARY_THRESH 0x0672
@@ -179,4 +183,20 @@ struct iqs5xx_data {
     bool config_logged;
     // MCK: The key position a gesture holds pressed, or -1.
     int32_t pressed_position;
+#if IS_ENABLED(CONFIG_MCK_IQS5XX_TOUCH_LOG)
+    // MCK: One touch (from the first finger down to all fingers up), for the touch log.
+    struct {
+        bool active;
+        int64_t start_ms;
+        uint8_t fingers;
+        uint8_t max_fingers;
+        // Center of the fingers when the most fingers were first down, and its movement
+        // while that many fingers stayed down (last and largest, per axis).
+        int32_t ref_x, ref_y;
+        int32_t move_x, move_y;
+        int32_t peak_x, peak_y;
+        uint16_t samples;
+        uint8_t ic_events_0, ic_events_1;
+    } touch;
+#endif
 };
