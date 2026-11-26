@@ -87,7 +87,8 @@ properties:
         8-11: four finger swipe up, right, down, left
       The driver presses the position and releases it gesture-release-ms later.
       Gestures without a position keep the old behavior (one / two finger tap are
-      reported as BTN_0 / BTN_1). Three / four finger gestures are not detected yet.
+      reported as BTN_0 / BTN_1). Three / four finger gestures (CONFIG_MCK_IQS5XX_GESTURES)
+      are detected when the list reaches the three finger tap (entry 2).
 
   gesture-release-ms:
     type: int

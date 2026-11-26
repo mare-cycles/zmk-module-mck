@@ -84,9 +84,51 @@ config MCK_IQS5XX_BLOCK_READ
       movement (0x000D..0x0015) in one transaction on every RDY event,
       instead of one transaction per register.
 
+config MCK_IQS5XX_FINGER_DATA
+    bool
+    help
+      Read the absolute data of fingers 1-5 (0x0016..0x0038) with the status.
+
+config MCK_IQS5XX_GESTURES
+    bool "3 / 4 finger taps and swipes"
+    depends on MCK_IQS5XX_BLOCK_READ
+    select MCK_IQS5XX_FINGER_DATA
+    default y
+    help
+      Detect 3 / 4 finger taps and swipes from the fingers' absolute data
+      (the IC has no gestures for more than 2 fingers) and press their key
+      positions (gesture-positions, entries 2-11). While 3 or more fingers
+      are down, no cursor movement, scroll or IC tap is reported. Only
+      active when gesture-positions has an entry for the 3 finger tap.
+
+if MCK_IQS5XX_GESTURES
+
+config MCK_IQS5XX_GESTURE_TAP_MS
+    int "Longest touch that counts as a 3 / 4 finger tap (ms)"
+    default 400
+
+config MCK_IQS5XX_GESTURE_TAP_MOVE
+    int "Most the fingers may move for a 3 / 4 finger tap (trackpad units)"
+    default 80
+
+config MCK_IQS5XX_GESTURE_SWIPE_DIST
+    int "Distance the fingers move for a 3 / 4 finger swipe (trackpad units)"
+    default 200
+
+config MCK_IQS5XX_GESTURE_SWIPE_SETTLE_MS
+    int "Wait after the first finger before a swipe, so the finger count settles (ms)"
+    default 100
+
+config MCK_IQS5XX_GESTURE_SWIPE_MAX_MS
+    int "No swipe after the touch has lasted this long (ms)"
+    default 1000
+
+endif # MCK_IQS5XX_GESTURES
+
 config MCK_IQS5XX_TOUCH_LOG
     bool "Log every touch (finger count, duration, movement) for tuning"
     depends on MCK_IQS5XX_BLOCK_READ
+    select MCK_IQS5XX_FINGER_DATA
     help
       Also read the absolute data of fingers 1-5 (0x0016..0x0038) and log,
       at the info level, when the finger count changes and a summary when

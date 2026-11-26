@@ -148,6 +148,7 @@ class WestCommandsTests(unittest.TestCase):
                     config=[
                         "CONFIG_MCK_IQS5XX=y",
                         "# CONFIG_MCK_IQS5XX_BLOCK_READ is not set",
+                        NotFound("CONFIG_MCK_IQS5XX_GESTURES=y"),
                     ],
                     device=[
                         "DT_COMPAT_HAS_OKAY_mck_iqs5xx",
@@ -156,10 +157,13 @@ class WestCommandsTests(unittest.TestCase):
                 "mck_iqs5xx_positions": ConfigAndDeviceTree(
                     config=[
                         "CONFIG_MCK_IQS5XX=y",
+                        "CONFIG_MCK_IQS5XX_GESTURES=y",
+                        "CONFIG_MCK_IQS5XX_FINGER_DATA=y",
+                        "CONFIG_MCK_IQS5XX_GESTURE_SWIPE_DIST=200",
                     ],
                     device=[
                         "DT_COMPAT_HAS_OKAY_mck_iqs5xx",
-                        "_P_gesture_positions_LEN 2",
+                        "_P_gesture_positions_LEN 12",
                         "_P_gesture_release_ms 50",
                     ],
                 ),

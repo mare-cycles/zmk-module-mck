@@ -162,7 +162,7 @@ struct iqs5xx_config {
 #define IQS5XX_GESTURE_TAP_2 1
 #define IQS5XX_GESTURE_TAP_3 2
 #define IQS5XX_GESTURE_TAP_4 3
-#define IQS5XX_GESTURE_SWIPE_3_UP 4
+#define IQS5XX_GESTURE_SWIPE_3_UP 4 // then right, down, left
 #define IQS5XX_GESTURE_SWIPE_4_UP 8
 #define IQS5XX_GESTURE_COUNT 12
 
@@ -198,5 +198,22 @@ struct iqs5xx_data {
         uint16_t samples;
         uint8_t ic_events_0, ic_events_1;
     } touch;
+#endif
+#if IS_ENABLED(CONFIG_MCK_IQS5XX_GESTURES)
+    // MCK: One touch, for the 3 / 4 finger gestures.
+    struct {
+        bool active;
+        // A swipe was pressed, so nothing more (no tap either) until all fingers are up.
+        bool done;
+        int64_t start_ms;
+        uint8_t fingers;
+        uint8_t max_fingers;
+        // Center of the fingers in the last sample, and its movement since the most fingers
+        // came down, added up between samples with the same finger count (and the largest
+        // axis of that movement so far).
+        int32_t last_x, last_y;
+        int32_t move_x, move_y;
+        int32_t peak;
+    } gest;
 #endif
 };

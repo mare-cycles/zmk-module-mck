@@ -14,6 +14,9 @@
  *
  * MCK: 2026-11-25 (D-136 T2) the taps can press key positions (gesture-positions) instead of
  * reporting BTN_0 / BTN_1.
+ *
+ * MCK: 2026-11-26 (D-136 T3) 3 / 4 finger taps and swipes from the fingers' absolute data
+ * (MCK_IQS5XX_GESTURES), and a touch log for tuning them (MCK_IQS5XX_TOUCH_LOG).
  */
 
 #define DT_DRV_COMPAT mck_iqs5xx
@@ -185,7 +188,7 @@ struct iqs5xx_status {
     uint8_t num_fingers;
     int16_t rel_x;
     int16_t rel_y;
-#if IS_ENABLED(CONFIG_MCK_IQS5XX_TOUCH_LOG)
+#if IS_ENABLED(CONFIG_MCK_IQS5XX_FINGER_DATA)
     struct {
         uint16_t x;
         uint16_t y;
@@ -194,7 +197,7 @@ struct iqs5xx_status {
 #endif
 };
 
-#if IS_ENABLED(CONFIG_MCK_IQS5XX_TOUCH_LOG)
+#if IS_ENABLED(CONFIG_MCK_IQS5XX_FINGER_DATA)
 // MCK: Up to the area of finger 5 (0x0038).
 #define IQS5XX_STATUS_END (IQS5XX_FINGER_DATA + IQS5XX_FINGER_SIZE * IQS5XX_MAX_FINGERS)
 #else
@@ -203,7 +206,7 @@ struct iqs5xx_status {
 
 #if IS_ENABLED(CONFIG_MCK_IQS5XX_BLOCK_READ)
 // MCK: 0x000D (gesture events 0) .. 0x0015 (relative Y low byte) are consecutive
-// (with MCK_IQS5XX_TOUCH_LOG, also the finger data up to 0x0038).
+// (with MCK_IQS5XX_FINGER_DATA, also the finger data up to 0x0038).
 static int iqs5xx_read_status(const struct device *dev, struct iqs5xx_status *st) {
     uint8_t buf[IQS5XX_STATUS_END - IQS5XX_GESTURE_EVENTS_0];
     int ret = iqs5xx_read_block(dev, IQS5XX_GESTURE_EVENTS_0, buf, sizeof(buf));
@@ -220,7 +223,7 @@ static int iqs5xx_read_status(const struct device *dev, struct iqs5xx_status *st
     st->num_fingers = IQS5XX_AT(IQS5XX_NUM_FINGERS);
     st->rel_x = (int16_t)((IQS5XX_AT(IQS5XX_REL_X) << 8) | IQS5XX_AT(IQS5XX_REL_X + 1));
     st->rel_y = (int16_t)((IQS5XX_AT(IQS5XX_REL_Y) << 8) | IQS5XX_AT(IQS5XX_REL_Y + 1));
-#if IS_ENABLED(CONFIG_MCK_IQS5XX_TOUCH_LOG)
+#if IS_ENABLED(CONFIG_MCK_IQS5XX_FINGER_DATA)
     for (int i = 0; i < IQS5XX_MAX_FINGERS; i++) {
         const uint16_t f = IQS5XX_FINGER_DATA + IQS5XX_FINGER_SIZE * i;
         st->fingers[i].x = (IQS5XX_AT(f) << 8) | IQS5XX_AT(f + 1);
@@ -339,6 +342,93 @@ static void iqs5xx_touch_log(struct iqs5xx_data *data, const struct iqs5xx_statu
 }
 #endif
 
+#if IS_ENABLED(CONFIG_MCK_IQS5XX_GESTURES)
+// MCK: 2026-11-26 (D-136 T3) 3 / 4 finger taps and swipes. The values come from a touch log of
+// the GRT65W rev1 (taps: 170-350 ms, the fingers' center moves up to 30; swipes: 335 or more).
+// Four fingers often flicker between 3 and 4 (every ~20 ms) and the center jumps when the count
+// changes, so the movement only adds up between samples with the same finger count.
+static bool iqs5xx_gestures_enabled(const struct iqs5xx_config *config) {
+    return config->gesture_positions_len > IQS5XX_GESTURE_TAP_3;
+}
+
+// Returns true while the touch is a 3 / 4 finger one, so the caller reports nothing else.
+static bool iqs5xx_gestures_update(const struct device *dev, const struct iqs5xx_status *st) {
+    struct iqs5xx_data *data = dev->data;
+    uint8_t count = 0;
+    int32_t sum_x = 0, sum_y = 0;
+    for (int i = 0; i < IQS5XX_MAX_FINGERS; i++) {
+        if (st->fingers[i].strength > 0) {
+            count++;
+            sum_x += st->fingers[i].x;
+            sum_y += st->fingers[i].y;
+        }
+    }
+
+    int64_t now = k_uptime_get();
+    if (!data->gest.active) {
+        if (count == 0) {
+            return false;
+        }
+        memset(&data->gest, 0, sizeof(data->gest));
+        data->gest.active = true;
+        data->gest.start_ms = now;
+    }
+
+    int32_t elapsed = (int32_t)(now - data->gest.start_ms);
+    if (count > 0) {
+        int32_t cx = sum_x / count;
+        int32_t cy = sum_y / count;
+        if (count == data->gest.fingers) {
+            data->gest.move_x += cx - data->gest.last_x;
+            data->gest.move_y += cy - data->gest.last_y;
+            data->gest.peak = MAX(data->gest.peak,
+                                  MAX(abs(data->gest.move_x), abs(data->gest.move_y)));
+        }
+        data->gest.last_x = cx;
+        data->gest.last_y = cy;
+        if (count > data->gest.max_fingers) {
+            // Count the movement from when the most fingers came down (the 3rd / 4th finger
+            // lands 15-80 ms after the first), so a 2 finger scroll does not count as a swipe.
+            data->gest.max_fingers = count;
+            data->gest.move_x = data->gest.move_y = 0;
+            data->gest.peak = 0;
+        }
+    }
+    data->gest.fingers = count;
+
+    bool multi = data->gest.max_fingers >= 3;
+    bool four = data->gest.max_fingers >= 4;
+
+    // Swipe: once, when the center has moved far enough (the larger axis gives the direction).
+    if (multi && count > 0 && !data->gest.done &&
+        elapsed >= CONFIG_MCK_IQS5XX_GESTURE_SWIPE_SETTLE_MS &&
+        elapsed <= CONFIG_MCK_IQS5XX_GESTURE_SWIPE_MAX_MS &&
+        data->gest.peak >= CONFIG_MCK_IQS5XX_GESTURE_SWIPE_DIST) {
+        int32_t mx = data->gest.move_x, my = data->gest.move_y;
+        // 0: up (y decreases), 1: right, 2: down, 3: left.
+        uint8_t dir = abs(mx) >= abs(my) ? (mx > 0 ? 1 : 3) : (my < 0 ? 0 : 2);
+        uint8_t gesture = (four ? IQS5XX_GESTURE_SWIPE_4_UP : IQS5XX_GESTURE_SWIPE_3_UP) + dir;
+        LOG_DBG("Swipe: %u fingers, dir %u, move (%d, %d) at %d ms", data->gest.max_fingers, dir,
+                mx, my, elapsed);
+        iqs5xx_press_gesture(dev, gesture);
+        data->gest.done = true;
+    }
+
+    if (count == 0) {
+        // Tap: all fingers up, short and hardly moved.
+        if (multi && !data->gest.done && elapsed <= CONFIG_MCK_IQS5XX_GESTURE_TAP_MS &&
+            data->gest.peak <= CONFIG_MCK_IQS5XX_GESTURE_TAP_MOVE) {
+            LOG_DBG("Tap: %u fingers, %d ms, moved %d", data->gest.max_fingers, elapsed,
+                    data->gest.peak);
+            iqs5xx_press_gesture(dev, four ? IQS5XX_GESTURE_TAP_4 : IQS5XX_GESTURE_TAP_3);
+        }
+        data->gest.active = false;
+    }
+
+    return multi;
+}
+#endif
+
 static void iqs5xx_work_handler(struct k_work *work) {
     struct iqs5xx_data *data = CONTAINER_OF(work, struct iqs5xx_data, work);
     const struct device *dev = data->dev;
@@ -373,6 +463,14 @@ static void iqs5xx_work_handler(struct k_work *work) {
 
 #if IS_ENABLED(CONFIG_MCK_IQS5XX_TOUCH_LOG)
     iqs5xx_touch_log(data, &st);
+#endif
+
+    // MCK: While 3 / 4 fingers are down (until all are up), report only their gestures.
+    bool multi_finger = false;
+#if IS_ENABLED(CONFIG_MCK_IQS5XX_GESTURES)
+    if (iqs5xx_gestures_enabled(config)) {
+        multi_finger = iqs5xx_gestures_update(dev, &st);
+    }
 #endif
 
     bool tp_movement = (st.sys_info_1 & IQS5XX_TP_MOVEMENT) != 0;
@@ -411,6 +509,10 @@ static void iqs5xx_work_handler(struct k_work *work) {
         LOG_INF("Hold became inactive");
         input_report_key(dev, LEFT_BUTTON_CODE, 0, true, K_FOREVER);
         data->active_hold = false;
+    } else if (multi_finger) {
+        // MCK: No cursor, scroll or IC tap during a 3 / 4 finger touch.
+        data->scroll_x_acc = 0;
+        data->scroll_y_acc = 0;
     } else if (button_pressed &&
                iqs5xx_press_gesture(dev, button_code == INPUT_BTN_0 ? IQS5XX_GESTURE_TAP_1
                                                                      : IQS5XX_GESTURE_TAP_2)) {

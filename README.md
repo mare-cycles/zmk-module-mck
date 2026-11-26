@@ -164,14 +164,19 @@ physical layout, and give them bindings on every layer.
 
 ```dts
 &trackpad {
-    // 1 / 2 finger tap, then (later) 3 / 4 finger tap, 3 finger swipe up / right / down / left,
+    // 1 / 2 finger tap, then 3 / 4 finger tap, 3 finger swipe up / right / down / left,
     // 4 finger swipe up / right / down / left. Entries can be left out from the end.
-    gesture-positions = <3 4>;
+    gesture-positions = <3 4 5 6  7 8 9 10  11 12 13 14>;
     gesture-release-ms = <100>;   // default
 };
 ```
 
-Three / four finger gestures are not detected yet.
+Three / four finger taps and swipes are detected by the driver (`CONFIG_MCK_IQS5XX_GESTURES`,
+default y, active when `gesture-positions` reaches the three finger tap): a tap is a touch of at
+most `CONFIG_MCK_IQS5XX_GESTURE_TAP_MS` (400) whose fingers move at most `..._TAP_MOVE` (80); a
+swipe fires once when the fingers have moved `..._SWIPE_DIST` (200), from `..._SWIPE_SETTLE_MS`
+(100) to `..._SWIPE_MAX_MS` (1000) after the first finger. While 3 or more fingers are down,
+no cursor movement, scroll or IC tap is reported.
 
 `CONFIG_MCK_IQS5XX_TOUCH_LOG` (for a USB logging build) logs every touch: the finger count as
 it changes, and when all fingers are up, the most fingers, the duration, how far their center
