@@ -17,6 +17,9 @@
  *
  * MCK: 2026-11-26 (D-136 T3) 3 / 4 finger taps and swipes from the fingers' absolute data
  * (MCK_IQS5XX_GESTURES), and a touch log for tuning them (MCK_IQS5XX_TOUCH_LOG).
+ *
+ * MCK: 2026-11-26 (D-136 T4) correction, acceleration, inertia and scroll only
+ * (MCK_IQS5XX_MOTION, off by default).
  */
 
 #define DT_DRV_COMPAT mck_iqs5xx
@@ -33,6 +36,8 @@
 
 #include <zmk/events/position_state_changed.h>
 #include <zmk/matrix.h>
+
+#include <mck/trackpad.h>
 
 #include "iqs5xx.h"
 
@@ -435,10 +440,235 @@ static bool iqs5xx_gestures_update(const struct device *dev, const struct iqs5xx
 }
 #endif
 
+// MCK: The original two finger scroll, also used by scroll only and the scroll inertia:
+// 32 trackpad units per wheel step, one axis at a time.
+static void iqs5xx_report_scroll(const struct device *dev, int16_t rel_x, int16_t rel_y) {
+    const struct iqs5xx_config *config = dev->config;
+    struct iqs5xx_data *data = dev->data;
+    // TODO: Expose this divisor.
+    const int16_t scroll_div = 32;
+
+    // Only one scrolling direction is valid at a time.
+    if (rel_x != 0) {
+        // By default the x axis is already "natural".
+        if (!config->natural_scroll_x) {
+            rel_x *= -1;
+        }
+        data->scroll_x_acc += rel_x;
+        if (abs(data->scroll_x_acc) >= scroll_div) {
+            input_report_rel(dev, INPUT_REL_HWHEEL, data->scroll_x_acc / scroll_div, true,
+                             K_FOREVER);
+            data->scroll_x_acc %= scroll_div;
+        }
+        return;
+    }
+    if (rel_y != 0) {
+        if (config->natural_scroll_y) {
+            rel_y *= -1;
+        }
+        data->scroll_y_acc += rel_y;
+        if (abs(data->scroll_y_acc) >= scroll_div) {
+            input_report_rel(dev, INPUT_REL_WHEEL, data->scroll_y_acc / scroll_div, true,
+                             K_FOREVER);
+            data->scroll_y_acc %= scroll_div;
+        }
+    }
+}
+
+#if IS_ENABLED(CONFIG_MCK_IQS5XX_MOTION)
+// MCK: 2026-11-26 (D-136 T4) correction, acceleration, inertia and scroll only. Only the
+// ideas come from the GR-Trackpad65 kit (average of the last N moves, acceleration growing
+// with the speed, inertia slowing down evenly); the code is written here. With the defaults
+// (correction 1, the rest 0 / off) the movement is reported exactly as before.
+#define IQS5XX_MOTION_NONE 0
+#define IQS5XX_MOTION_CURSOR 1
+#define IQS5XX_MOTION_SCROLL 2
+
+// A lift counts for inertia only when the last move was this recent (ms).
+#define IQS5XX_INERTIA_LIFT_MS 40
+
+static struct mck_trackpad_motion motion_cfg = {
+    .correction = CONFIG_MCK_IQS5XX_CORRECTION,
+    .accel = CONFIG_MCK_IQS5XX_ACCEL,
+    .inertia_cursor = CONFIG_MCK_IQS5XX_INERTIA_CURSOR,
+    .inertia_scroll = CONFIG_MCK_IQS5XX_INERTIA_SCROLL,
+    .scroll_only = IS_ENABLED(CONFIG_MCK_IQS5XX_SCROLL_ONLY),
+};
+static atomic_t scroll_mode_holds;
+
+void mck_trackpad_get_motion(struct mck_trackpad_motion *motion) { *motion = motion_cfg; }
+
+void mck_trackpad_set_motion(const struct mck_trackpad_motion *motion) {
+    motion_cfg.correction = CLAMP(motion->correction, 1, 9);
+    motion_cfg.accel = MIN(motion->accel, 9);
+    motion_cfg.inertia_cursor = MIN(motion->inertia_cursor, 9);
+    motion_cfg.inertia_scroll = MIN(motion->inertia_scroll, 9);
+    motion_cfg.scroll_only = motion->scroll_only;
+}
+
+void mck_trackpad_scroll_mode(bool pressed) {
+    if (pressed) {
+        atomic_inc(&scroll_mode_holds);
+    } else if (atomic_get(&scroll_mode_holds) > 0) {
+        atomic_dec(&scroll_mode_holds);
+    }
+}
+
+static bool iqs5xx_scroll_only(void) {
+    return motion_cfg.scroll_only != (atomic_get(&scroll_mode_holds) > 0);
+}
+
+// Report a move in 1/256 units, keeping the part below one unit in *rem_x / *rem_y.
+static void iqs5xx_emit_cursor(const struct device *dev, int32_t vx, int32_t vy, int32_t *rem_x,
+                               int32_t *rem_y) {
+    *rem_x += vx;
+    *rem_y += vy;
+    int32_t out_x = *rem_x / 256;
+    int32_t out_y = *rem_y / 256;
+    *rem_x -= out_x * 256;
+    *rem_y -= out_y * 256;
+    if (out_x != 0 || out_y != 0) {
+        input_report_rel(dev, INPUT_REL_X, out_x, false, K_FOREVER);
+        input_report_rel(dev, INPUT_REL_Y, out_y, true, K_FOREVER);
+    }
+}
+
+static void iqs5xx_motion_record(struct iqs5xx_data *data, uint8_t kind, int32_t vx, int32_t vy) {
+    if (data->motion.kind != kind) {
+        data->motion.vel_len = 0;
+    }
+    data->motion.kind = kind;
+    data->motion.vel_x[data->motion.vel_pos] = vx;
+    data->motion.vel_y[data->motion.vel_pos] = vy;
+    data->motion.vel_pos = (data->motion.vel_pos + 1) % ARRAY_SIZE(data->motion.vel_x);
+    data->motion.vel_len = MIN(data->motion.vel_len + 1, ARRAY_SIZE(data->motion.vel_x));
+    data->motion.last_ms = k_uptime_get();
+}
+
+// One finger movement: correction, then acceleration.
+static void iqs5xx_cursor(const struct device *dev, int16_t rel_x, int16_t rel_y) {
+    struct iqs5xx_data *data = dev->data;
+    const uint8_t size = ARRAY_SIZE(data->motion.hist_x);
+
+    data->motion.hist_x[data->motion.hist_pos] = rel_x;
+    data->motion.hist_y[data->motion.hist_pos] = rel_y;
+    data->motion.hist_pos = (data->motion.hist_pos + 1) % size;
+    data->motion.hist_len = MIN(data->motion.hist_len + 1, size);
+
+    uint8_t n = MAX(MIN(motion_cfg.correction, data->motion.hist_len), 1);
+    int32_t sum_x = 0, sum_y = 0;
+    for (int i = 0; i < n; i++) {
+        uint8_t idx = (data->motion.hist_pos + size - 1 - i) % size;
+        sum_x += data->motion.hist_x[idx];
+        sum_y += data->motion.hist_y[idx];
+    }
+    int32_t vx = sum_x * 256 / n;
+    int32_t vy = sum_y * 256 / n;
+
+    if (motion_cfg.accel > 0) {
+        // Up to 1 + accel * 2 / 9 times for a move of 32 or more per report.
+        int32_t speed = MIN(MAX(abs(vx), abs(vy)) / 256, 32);
+        int32_t gain = 256 + motion_cfg.accel * speed * 256 / (9 * 16);
+        vx = vx * gain / 256;
+        vy = vy * gain / 256;
+    }
+
+    iqs5xx_motion_record(data, IQS5XX_MOTION_CURSOR, vx, vy);
+    iqs5xx_emit_cursor(dev, vx, vy, &data->motion.rem_x, &data->motion.rem_y);
+}
+
+static void iqs5xx_inertia_work_handler(struct k_work *work) {
+    struct k_work_delayable *dwork = k_work_delayable_from_work(work);
+    struct iqs5xx_data *data = CONTAINER_OF(dwork, struct iqs5xx_data, motion.inertia_work);
+    const struct device *dev = data->dev;
+
+    // Slow down evenly: full speed on the first step, 1 / steps on the last.
+    int32_t left = data->motion.in_steps - data->motion.in_step;
+    int32_t vx = data->motion.in_vx * left / data->motion.in_steps;
+    int32_t vy = data->motion.in_vy * left / data->motion.in_steps;
+    data->motion.in_step++;
+
+    if (data->motion.in_kind == IQS5XX_MOTION_CURSOR) {
+        iqs5xx_emit_cursor(dev, vx, vy, &data->motion.in_rem_x, &data->motion.in_rem_y);
+    } else {
+        data->motion.in_rem_x += vx;
+        data->motion.in_rem_y += vy;
+        int32_t out_x = data->motion.in_rem_x / 256;
+        int32_t out_y = data->motion.in_rem_y / 256;
+        data->motion.in_rem_x -= out_x * 256;
+        data->motion.in_rem_y -= out_y * 256;
+        iqs5xx_report_scroll(dev, out_x, out_y);
+    }
+
+    if (data->motion.in_step < data->motion.in_steps) {
+        k_work_schedule(&data->motion.inertia_work, K_MSEC(CONFIG_MCK_IQS5XX_INERTIA_INTERVAL_MS));
+    }
+}
+
+// Follow the touch: a new touch stops the inertia; lifting a quick move starts it.
+static void iqs5xx_motion_touch(const struct device *dev, uint8_t fingers) {
+    struct iqs5xx_data *data = dev->data;
+
+    if (fingers > 0) {
+        if (!data->motion.touching) {
+            data->motion.touching = true;
+            k_work_cancel_delayable(&data->motion.inertia_work);
+            data->motion.hist_len = data->motion.hist_pos = 0;
+            data->motion.rem_x = data->motion.rem_y = 0;
+            data->motion.vel_len = data->motion.vel_pos = 0;
+            data->motion.kind = IQS5XX_MOTION_NONE;
+        }
+        return;
+    }
+    if (!data->motion.touching) {
+        return;
+    }
+    data->motion.touching = false;
+
+    uint8_t kind = data->motion.kind;
+    uint8_t length = kind == IQS5XX_MOTION_CURSOR   ? motion_cfg.inertia_cursor
+                     : kind == IQS5XX_MOTION_SCROLL ? motion_cfg.inertia_scroll
+                                                    : 0;
+    if (length == 0 || data->motion.vel_len == 0 ||
+        k_uptime_get() - data->motion.last_ms > IQS5XX_INERTIA_LIFT_MS) {
+        return;
+    }
+
+    int32_t vx = 0, vy = 0;
+    for (int i = 0; i < data->motion.vel_len; i++) {
+        vx += data->motion.vel_x[i];
+        vy += data->motion.vel_y[i];
+    }
+    vx /= data->motion.vel_len;
+    vy /= data->motion.vel_len;
+    if (MAX(abs(vx), abs(vy)) < CONFIG_MCK_IQS5XX_INERTIA_MIN_SPEED * 256) {
+        return;
+    }
+    if (kind == IQS5XX_MOTION_SCROLL) {
+        // The scroll moves one axis at a time: keep the larger one.
+        if (abs(vx) >= abs(vy)) {
+            vy = 0;
+        } else {
+            vx = 0;
+        }
+    }
+
+    LOG_DBG("Inertia: kind %u, speed (%d, %d)/256, %u steps", kind, vx, vy, length * 8);
+    data->motion.in_kind = kind;
+    data->motion.in_vx = vx;
+    data->motion.in_vy = vy;
+    data->motion.in_step = 0;
+    data->motion.in_steps = length * 8;
+    data->motion.in_rem_x = data->motion.in_rem_y = 0;
+    k_work_schedule(&data->motion.inertia_work, K_MSEC(CONFIG_MCK_IQS5XX_INERTIA_INTERVAL_MS));
+}
+#endif // IS_ENABLED(CONFIG_MCK_IQS5XX_MOTION)
+
 static void iqs5xx_work_handler(struct k_work *work) {
     struct iqs5xx_data *data = CONTAINER_OF(work, struct iqs5xx_data, work);
     const struct device *dev = data->dev;
-    const struct iqs5xx_config *config = dev->config;
+    // MCK: Only the gestures use it here now (the scroll moved to iqs5xx_report_scroll).
+    const struct iqs5xx_config *config __maybe_unused = dev->config;
     struct iqs5xx_status st;
     int ret;
 
@@ -479,9 +709,19 @@ static void iqs5xx_work_handler(struct k_work *work) {
     }
 #endif
 
+    bool scroll_only = false;
+#if IS_ENABLED(CONFIG_MCK_IQS5XX_MOTION)
+    iqs5xx_motion_touch(dev, st.num_fingers);
+    scroll_only = iqs5xx_scroll_only();
+    if (multi_finger) {
+        // No inertia after a 3 / 4 finger touch.
+        data->motion.kind = IQS5XX_MOTION_NONE;
+    }
+#endif
+
     bool tp_movement = (st.sys_info_1 & IQS5XX_TP_MOVEMENT) != 0;
     bool scroll = (st.gesture_events_1 & IQS5XX_SCROLL) != 0;
-    if (!scroll) {
+    if (!scroll && !(scroll_only && tp_movement)) {
         // Clear accumulators if we're not actively scrolling.
         data->scroll_x_acc = 0;
         data->scroll_y_acc = 0;
@@ -533,44 +773,26 @@ static void iqs5xx_work_handler(struct k_work *work) {
 
         // Schedule release after 100ms.
         k_work_schedule(&data->button_release_work, K_MSEC(100));
-    } else if (scroll) {
-        // TODO: Expose this divisor.
-        int16_t scroll_div = 32;
-
-        // Only one scrolling direction is valid at a time.
-        // End the communication right after reporting the movement.
-        if (rel_x != 0) {
-            // By default the x axis is already "natural".
-            if (!config->natural_scroll_x) {
-                rel_x *= -1;
-            }
-            data->scroll_x_acc += rel_x;
-            if (abs(data->scroll_x_acc) >= scroll_div) {
-                input_report_rel(dev, INPUT_REL_HWHEEL, data->scroll_x_acc / scroll_div, true,
-                                 K_FOREVER);
-                data->scroll_x_acc %= scroll_div;
-            }
-            goto end_comm;
+    } else if (scroll || (scroll_only && tp_movement)) {
+        // MCK: Two finger scroll, or one finger with scroll only (CONFIG_MCK_IQS5XX_MOTION).
+        iqs5xx_report_scroll(dev, rel_x, rel_y);
+#if IS_ENABLED(CONFIG_MCK_IQS5XX_MOTION)
+        if (rel_x != 0 || rel_y != 0) {
+            iqs5xx_motion_record(data, IQS5XX_MOTION_SCROLL, rel_x * 256, rel_y * 256);
         }
-        if (rel_y != 0) {
-            if (config->natural_scroll_y) {
-                rel_y *= -1;
-            }
-            data->scroll_y_acc += rel_y;
-            if (abs(data->scroll_y_acc) >= scroll_div) {
-                input_report_rel(dev, INPUT_REL_WHEEL, data->scroll_y_acc / scroll_div, true,
-                                 K_FOREVER);
-                data->scroll_y_acc %= scroll_div;
-            }
-
-            goto end_comm;
-        }
+#endif
     } else if (tp_movement) {
-        // MCK: The finger count is read with the status (block read) and is not used yet.
+#if IS_ENABLED(CONFIG_MCK_IQS5XX_MOTION)
+        // MCK: Correction and acceleration (CONFIG_MCK_IQS5XX_MOTION).
+        if (rel_x != 0 || rel_y != 0) {
+            iqs5xx_cursor(dev, rel_x, rel_y);
+        }
+#else
         if (rel_x != 0 || rel_y != 0) {
             input_report_rel(dev, INPUT_REL_X, rel_x, false, K_FOREVER);
             input_report_rel(dev, INPUT_REL_Y, rel_y, true, K_FOREVER);
         }
+#endif
     }
 
 end_comm:
@@ -733,6 +955,9 @@ static int iqs5xx_init(const struct device *dev) {
 
     data->dev = dev;
     data->pressed_position = -1;
+#if IS_ENABLED(CONFIG_MCK_IQS5XX_MOTION)
+    k_work_init_delayable(&data->motion.inertia_work, iqs5xx_inertia_work_handler);
+#endif
     k_work_init(&data->work, iqs5xx_work_handler);
     k_work_init_delayable(&data->button_release_work, iqs5xx_button_release_work_handler);
 

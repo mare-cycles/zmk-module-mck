@@ -1,0 +1,3 @@
+name: mck-iqs5xx-motion
+append:
+  EXTRA_DTC_OVERLAY_FILE: mck-iqs5xx-motion.overlay

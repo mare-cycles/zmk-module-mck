@@ -139,6 +139,12 @@ class WestCommandsTests(unittest.TestCase):
                         "CONFIG_MCK_IQS5XX=y",
                         "CONFIG_MCK_IQS5XX_BLOCK_READ=y",
                         "CONFIG_ZMK_POINTING=y",
+                        # On, with everything off by default (same movement as before)
+                        "CONFIG_MCK_IQS5XX_MOTION=y",
+                        "CONFIG_MCK_IQS5XX_CORRECTION=1",
+                        "CONFIG_MCK_IQS5XX_ACCEL=0",
+                        "# CONFIG_MCK_IQS5XX_SCROLL_ONLY is not set",
+                        NotFound("CONFIG_MCK_BEHAVIOR_TP_SCROLL=y"),
                     ],
                     device=[
                         "DT_COMPAT_HAS_OKAY_mck_iqs5xx",
@@ -165,6 +171,21 @@ class WestCommandsTests(unittest.TestCase):
                         "DT_COMPAT_HAS_OKAY_mck_iqs5xx",
                         "_P_gesture_positions_LEN 12",
                         "_P_gesture_release_ms 50",
+                    ],
+                ),
+                "mck_iqs5xx_motion": ConfigAndDeviceTree(
+                    config=[
+                        "CONFIG_MCK_IQS5XX_MOTION=y",
+                        "CONFIG_MCK_IQS5XX_CORRECTION=2",
+                        "CONFIG_MCK_IQS5XX_ACCEL=5",
+                        "CONFIG_MCK_IQS5XX_INERTIA_CURSOR=5",
+                        "CONFIG_MCK_IQS5XX_INERTIA_SCROLL=5",
+                        "CONFIG_MCK_IQS5XX_SCROLL_ONLY=y",
+                        "CONFIG_MCK_BEHAVIOR_TP_SCROLL=y",
+                    ],
+                    device=[
+                        "DT_COMPAT_HAS_OKAY_mck_iqs5xx",
+                        "DT_COMPAT_HAS_OKAY_mck_behavior_tp_scroll",
                     ],
                 ),
                 "mck_iqs5xx_touch_log": ConfigAndDeviceTree(

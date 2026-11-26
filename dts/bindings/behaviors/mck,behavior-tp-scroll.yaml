@@ -1,0 +1,8 @@
+# &tp_scroll: while held, one finger on the mck,iqs5xx trackpad scrolls instead of moving the
+# cursor (or moves the cursor, when scroll only is on). 2026-11-26 (D-136 T4).
+
+description: Trackpad scroll mode while held
+
+compatible: "mck,behavior-tp-scroll"
+
+include: zero_param.yaml

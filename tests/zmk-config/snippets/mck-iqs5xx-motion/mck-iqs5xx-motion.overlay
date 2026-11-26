@@ -1,0 +1,5 @@
+/*
+ * Build test (use after the mck-iqs5xx snippet): the &tp_scroll behavior of the trackpad.
+ */
+
+#include <behaviors/mck_trackpad.dtsi>

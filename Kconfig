@@ -125,6 +125,68 @@ config MCK_IQS5XX_GESTURE_SWIPE_MAX_MS
 
 endif # MCK_IQS5XX_GESTURES
 
+config MCK_IQS5XX_MOTION
+    bool "Cursor correction, acceleration, inertia and scroll only"
+    depends on MCK_IQS5XX_BLOCK_READ
+    default y
+    help
+      Process the one finger movement and the two finger scroll before they
+      are reported: correction (average of the last moves), acceleration,
+      inertia when the fingers are lifted, and scroll only (one finger
+      scrolls; &tp_scroll swaps it while held). The defaults below turn
+      everything off, which reports the movement as before.
+
+if MCK_IQS5XX_MOTION
+
+config MCK_IQS5XX_CORRECTION
+    int "Correction: average of the last N moves (1 = off)"
+    range 1 9
+    default 1
+
+config MCK_IQS5XX_ACCEL
+    int "Acceleration strength (0 = off, 1-9)"
+    range 0 9
+    default 0
+    help
+      Faster moves are multiplied more: up to 1 + strength * 2 / 9 times
+      (strength 9: 3 times) for a move of 32 or more per report.
+
+config MCK_IQS5XX_INERTIA_CURSOR
+    int "Cursor inertia length (0 = off, 1-9)"
+    range 0 9
+    default 0
+    help
+      After a quick one finger move is lifted, the cursor keeps moving and
+      slows down evenly over length * 8 steps (MCK_IQS5XX_INERTIA_INTERVAL_MS
+      each). Touching the trackpad stops it.
+
+config MCK_IQS5XX_INERTIA_SCROLL
+    int "Scroll inertia length (0 = off, 1-9)"
+    range 0 9
+    default 0
+    help
+      Same as the cursor inertia, for two finger scroll (and scroll only).
+
+config MCK_IQS5XX_SCROLL_ONLY
+    bool "Scroll only: one finger scrolls instead of moving the cursor"
+
+config MCK_IQS5XX_INERTIA_INTERVAL_MS
+    int "Time between two inertia reports (ms)"
+    default 15
+
+config MCK_IQS5XX_INERTIA_MIN_SPEED
+    int "Slowest move (per report, trackpad units) that starts inertia"
+    default 4
+
+endif # MCK_IQS5XX_MOTION
+
+DT_COMPAT_MCK_BEHAVIOR_TP_SCROLL := mck,behavior-tp-scroll
+
+config MCK_BEHAVIOR_TP_SCROLL
+    bool "&tp_scroll: scroll with one finger while held"
+    default $(dt_compat_enabled,$(DT_COMPAT_MCK_BEHAVIOR_TP_SCROLL))
+    depends on MCK_IQS5XX_MOTION
+
 config MCK_IQS5XX_TOUCH_LOG
     bool "Log every touch (finger count, duration, movement) for tuning"
     depends on MCK_IQS5XX_BLOCK_READ

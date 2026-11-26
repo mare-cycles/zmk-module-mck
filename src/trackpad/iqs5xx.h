@@ -218,4 +218,26 @@ struct iqs5xx_data {
         int32_t peak;
     } gest;
 #endif
+#if IS_ENABLED(CONFIG_MCK_IQS5XX_MOTION)
+    // MCK: Correction, acceleration and inertia (moves in 1/256 trackpad units).
+    struct {
+        bool touching;
+        // The last moves, for the correction (average of the last N).
+        int16_t hist_x[9], hist_y[9];
+        uint8_t hist_len, hist_pos;
+        // The part of a move below one unit, kept for the next report.
+        int32_t rem_x, rem_y;
+        // The last moves after processing, for the inertia speed, and what they were.
+        int32_t vel_x[4], vel_y[4];
+        uint8_t vel_len, vel_pos;
+        uint8_t kind;
+        int64_t last_ms;
+        // Inertia in progress.
+        struct k_work_delayable inertia_work;
+        uint8_t in_kind;
+        uint16_t in_step, in_steps;
+        int32_t in_vx, in_vy;
+        int32_t in_rem_x, in_rem_y;
+    } motion;
+#endif
 };

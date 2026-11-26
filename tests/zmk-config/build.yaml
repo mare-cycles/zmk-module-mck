@@ -70,6 +70,17 @@ include:
       - mck-iqs5xx
       - mck-iqs5xx-positions
 
+  # Correction, acceleration, inertia and scroll only all on, with &tp_scroll and Studio.
+  - artifact: mck_iqs5xx_motion
+    board: xiao_ble//zmk
+    shield: tester_xiao
+    cmake-args: -DCONFIG_ZMK_STUDIO=y -DCONFIG_MCK_IQS5XX_CORRECTION=2 -DCONFIG_MCK_IQS5XX_ACCEL=5 -DCONFIG_MCK_IQS5XX_INERTIA_CURSOR=5 -DCONFIG_MCK_IQS5XX_INERTIA_SCROLL=5 -DCONFIG_MCK_IQS5XX_SCROLL_ONLY=y
+    snippets:
+      - studio-rpc-usb-uart
+      - mck-iqs5xx
+      - mck-iqs5xx-positions
+      - mck-iqs5xx-motion
+
   # Touch log for tuning the 3 / 4 finger gestures (USB logging builds).
   - artifact: mck_iqs5xx_touch_log
     board: xiao_ble//zmk

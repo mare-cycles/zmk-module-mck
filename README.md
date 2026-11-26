@@ -178,6 +178,16 @@ swipe fires once when the fingers have moved `..._SWIPE_DIST` (200), from `..._S
 (100) to `..._SWIPE_MAX_MS` (1000) after the first finger. While 3 or more fingers are down,
 no cursor movement, scroll or IC tap is reported.
 
+**Motion** (`CONFIG_MCK_IQS5XX_MOTION`, default y, everything off by default = the movement is
+reported as before): `CONFIG_MCK_IQS5XX_CORRECTION` (average of the last N moves, 1-9),
+`..._ACCEL` (0-9), `..._INERTIA_CURSOR` / `..._INERTIA_SCROLL` (0-9: after lifting a quick move,
+it goes on and slows down over length * 8 steps; touching stops it) and `..._SCROLL_ONLY` (one
+finger scrolls). `&tp_scroll` swaps scroll only while held:
+
+```dts
+#include <behaviors/mck_trackpad.dtsi>   // in the keymap, then bind &tp_scroll
+```
+
 `CONFIG_MCK_IQS5XX_TOUCH_LOG` (for a USB logging build) logs every touch: the finger count as
 it changes, and when all fingers are up, the most fingers, the duration, how far their center
 moved and the gestures the IC reported.

@@ -1,0 +1,18 @@
+/*
+ * Copyright (c) 2026 mare-cycles
+ * SPDX-License-Identifier: MIT
+ *
+ * Behaviors of the mck,iqs5xx trackpad. Include it in the keymap:
+ *   #include <behaviors/mck_trackpad.dtsi>
+ */
+
+/ {
+    behaviors {
+        // While held, one finger scrolls (or moves the cursor, when scroll only is on).
+        tp_scroll: tp_scroll {
+            compatible = "mck,behavior-tp-scroll";
+            #binding-cells = <0>;
+            display-name = "TP Scroll";
+        };
+    };
+};
