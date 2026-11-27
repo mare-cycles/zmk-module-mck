@@ -149,16 +149,20 @@ config MCK_IQS5XX_ACCEL
     default 0
     help
       Faster moves are multiplied more: up to 1 + strength * 2 / 9 times
-      (strength 9: 3 times) for a move of 32 or more per report.
+      (strength 9: 3 times) for a speed of 32 or more per 15 ms (one IC
+      report; a slow move is reported less often, so the speed is per time).
 
 config MCK_IQS5XX_INERTIA_CURSOR
     int "Cursor inertia length (0 = off, 1-9)"
     range 0 9
     default 0
     help
-      After a quick one finger move is lifted, the cursor keeps moving and
-      slows down evenly over length * 8 steps (MCK_IQS5XX_INERTIA_INTERVAL_MS
-      each). Touching the trackpad stops it.
+      After a quick one finger move is lifted (the last move within 40 ms),
+      the cursor keeps moving at the speed of the moves in the last 45 ms and
+      slows down by 1 - 1 / (1 + length) each step
+      (MCK_IQS5XX_INERTIA_INTERVAL_MS): fast at first, then gently to a stop,
+      about (1 + length) times the first step in all. Touching the trackpad
+      stops it.
 
 config MCK_IQS5XX_INERTIA_SCROLL
     int "Scroll inertia length (0 = off, 1-9)"
@@ -175,8 +179,8 @@ config MCK_IQS5XX_INERTIA_INTERVAL_MS
     default 15
 
 config MCK_IQS5XX_INERTIA_MIN_SPEED
-    int "Slowest move (per report, trackpad units) that starts inertia"
-    default 4
+    int "Slowest speed (trackpad units per inertia step) that starts inertia"
+    default 6
 
 config MCK_IQS5XX_MOTION_LOG
     bool "Log every move report and inertia step for tuning"

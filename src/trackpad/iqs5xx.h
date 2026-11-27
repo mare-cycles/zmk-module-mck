@@ -227,15 +227,17 @@ struct iqs5xx_data {
         uint8_t hist_len, hist_pos;
         // The part of a move below one unit, kept for the next report.
         int32_t rem_x, rem_y;
-        // The last moves after processing, for the inertia speed, and what they were.
+        // The last moves after processing, the ms each took (since the move before), for the
+        // inertia speed, and what they were.
         int32_t vel_x[4], vel_y[4];
+        uint16_t vel_dt[4];
         uint8_t vel_len, vel_pos;
         uint8_t kind;
         int64_t last_ms;
-        // Inertia in progress.
+        // Inertia in progress: the speed per step, slowed down by in_keep / 256 each step.
         struct k_work_delayable inertia_work;
         uint8_t in_kind;
-        uint16_t in_step, in_steps;
+        uint16_t in_step, in_keep;
         int32_t in_vx, in_vy;
         int32_t in_rem_x, in_rem_y;
     } motion;

@@ -478,14 +478,26 @@ static void iqs5xx_report_scroll(const struct device *dev, int16_t rel_x, int16_
 #if IS_ENABLED(CONFIG_MCK_IQS5XX_MOTION)
 // MCK: 2026-11-26 (D-136 T4) correction, acceleration, inertia and scroll only. Only the
 // ideas come from the GR-Trackpad65 kit (average of the last N moves, acceleration growing
-// with the speed, inertia slowing down evenly); the code is written here. With the defaults
+// with the speed, inertia when lifted); the code is written here. With the defaults
 // (correction 1, the rest 0 / off) the movement is reported exactly as before.
+// 2026-11-27: speeds per time (not per report), the correction restarts after a pause and
+// the inertia slows down by a ratio each step (it slid too far and started on slow moves).
 #define IQS5XX_MOTION_NONE 0
 #define IQS5XX_MOTION_CURSOR 1
 #define IQS5XX_MOTION_SCROLL 2
 
+// One IC report (ms), seen in the motion log (2026-11-27): the unit of the speeds.
+#define IQS5XX_REPORT_MS 15
+// The correction forgets the moves before a pause longer than this (ms).
+#define IQS5XX_CORRECTION_GAP_MS 50
 // A lift counts for inertia only when the last move was this recent (ms).
 #define IQS5XX_INERTIA_LIFT_MS 40
+// The inertia speed is that of the moves in about the last this many ms before the lift.
+#define IQS5XX_INERTIA_WINDOW_MS 45
+// The inertia stops below this speed (1/256 units per step).
+#define IQS5XX_INERTIA_STOP 64
+// At most this many inertia steps.
+#define IQS5XX_INERTIA_MAX_STEPS 200
 
 static struct mck_trackpad_motion motion_cfg = {
     .correction = CONFIG_MCK_IQS5XX_CORRECTION,
@@ -550,13 +562,25 @@ static void iqs5xx_emit_cursor(const struct device *dev, int32_t vx, int32_t vy,
     }
 }
 
-static void iqs5xx_motion_record(struct iqs5xx_data *data, uint8_t kind, int32_t vx, int32_t vy) {
+// The ms this move took: since the move before of the same kind in this touch, or one IC
+// report for the first one. 2026-11-27: the IC reports about every 15 ms, but a slow move
+// only every 30-200 ms (one bigger move each), so the speed is measured per time.
+static uint16_t iqs5xx_motion_dt(const struct iqs5xx_data *data, uint8_t kind) {
+    if (data->motion.kind != kind || data->motion.vel_len == 0) {
+        return IQS5XX_REPORT_MS;
+    }
+    return (uint16_t)CLAMP(k_uptime_get() - data->motion.last_ms, 1, 1000);
+}
+
+static void iqs5xx_motion_record(struct iqs5xx_data *data, uint8_t kind, int32_t vx, int32_t vy,
+                                 uint16_t dt) {
     if (data->motion.kind != kind) {
         data->motion.vel_len = 0;
     }
     data->motion.kind = kind;
     data->motion.vel_x[data->motion.vel_pos] = vx;
     data->motion.vel_y[data->motion.vel_pos] = vy;
+    data->motion.vel_dt[data->motion.vel_pos] = dt;
     data->motion.vel_pos = (data->motion.vel_pos + 1) % ARRAY_SIZE(data->motion.vel_x);
     data->motion.vel_len = MIN(data->motion.vel_len + 1, ARRAY_SIZE(data->motion.vel_x));
     data->motion.last_ms = k_uptime_get();
@@ -566,7 +590,12 @@ static void iqs5xx_motion_record(struct iqs5xx_data *data, uint8_t kind, int32_t
 static void iqs5xx_cursor(const struct device *dev, int16_t rel_x, int16_t rel_y) {
     struct iqs5xx_data *data = dev->data;
     const uint8_t size = ARRAY_SIZE(data->motion.hist_x);
+    uint16_t dt = iqs5xx_motion_dt(data, IQS5XX_MOTION_CURSOR);
 
+    // The correction averages only a move that goes on: after a pause, start again.
+    if (dt > IQS5XX_CORRECTION_GAP_MS) {
+        data->motion.hist_len = 0;
+    }
     data->motion.hist_x[data->motion.hist_pos] = rel_x;
     data->motion.hist_y[data->motion.hist_pos] = rel_y;
     data->motion.hist_pos = (data->motion.hist_pos + 1) % size;
@@ -583,14 +612,15 @@ static void iqs5xx_cursor(const struct device *dev, int16_t rel_x, int16_t rel_y
     int32_t vy = sum_y * 256 / n;
 
     if (motion_cfg.accel > 0) {
-        // Up to 1 + accel * 2 / 9 times for a move of 32 or more per report.
-        int32_t speed = MIN(MAX(abs(vx), abs(vy)) / 256, 32);
+        // Up to 1 + accel * 2 / 9 times for a speed of 32 or more per IC report (15 ms).
+        int32_t speed = MAX(abs(vx), abs(vy)) * IQS5XX_REPORT_MS / MAX(dt, IQS5XX_REPORT_MS);
+        speed = MIN(speed / 256, 32);
         int32_t gain = 256 + motion_cfg.accel * speed * 256 / (9 * 16);
         vx = vx * gain / 256;
         vy = vy * gain / 256;
     }
 
-    iqs5xx_motion_record(data, IQS5XX_MOTION_CURSOR, vx, vy);
+    iqs5xx_motion_record(data, IQS5XX_MOTION_CURSOR, vx, vy, dt);
     int32_t out_x, out_y;
     iqs5xx_emit_cursor(dev, vx, vy, &data->motion.rem_x, &data->motion.rem_y, &out_x, &out_y);
     iqs5xx_motion_log('c', rel_x, rel_y, out_x, out_y);
@@ -601,10 +631,12 @@ static void iqs5xx_inertia_work_handler(struct k_work *work) {
     struct iqs5xx_data *data = CONTAINER_OF(dwork, struct iqs5xx_data, motion.inertia_work);
     const struct device *dev = data->dev;
 
-    // Slow down evenly: full speed on the first step, 1 / steps on the last.
-    int32_t left = data->motion.in_steps - data->motion.in_step;
-    int32_t vx = data->motion.in_vx * left / data->motion.in_steps;
-    int32_t vy = data->motion.in_vy * left / data->motion.in_steps;
+    // Full speed on the first step, then slow down by in_keep / 256 each step (fast at first,
+    // then gently to a stop), until below IQS5XX_INERTIA_STOP.
+    int32_t vx = data->motion.in_vx;
+    int32_t vy = data->motion.in_vy;
+    data->motion.in_vx = vx * data->motion.in_keep / 256;
+    data->motion.in_vy = vy * data->motion.in_keep / 256;
     data->motion.in_step++;
 
     if (data->motion.in_kind == IQS5XX_MOTION_CURSOR) {
@@ -622,7 +654,8 @@ static void iqs5xx_inertia_work_handler(struct k_work *work) {
         iqs5xx_report_scroll(dev, out_x, out_y);
     }
 
-    if (data->motion.in_step < data->motion.in_steps) {
+    if (data->motion.in_step < IQS5XX_INERTIA_MAX_STEPS &&
+        MAX(abs(data->motion.in_vx), abs(data->motion.in_vy)) >= IQS5XX_INERTIA_STOP) {
         k_work_schedule(&data->motion.inertia_work, K_MSEC(CONFIG_MCK_IQS5XX_INERTIA_INTERVAL_MS));
     }
 }
@@ -661,15 +694,20 @@ static void iqs5xx_motion_touch(const struct device *dev, uint8_t fingers) {
         return;
     }
 
-    int32_t vx = 0, vy = 0;
-    for (int i = 0; i < data->motion.vel_len; i++) {
-        vx += data->motion.vel_x[i];
-        vy += data->motion.vel_y[i];
+    // The speed of the last moves (newest first, about IQS5XX_INERTIA_WINDOW_MS), per step.
+    const uint8_t size = ARRAY_SIZE(data->motion.vel_x);
+    int32_t vx = 0, vy = 0, took = 0;
+    for (int i = 0; i < data->motion.vel_len && took < IQS5XX_INERTIA_WINDOW_MS; i++) {
+        uint8_t idx = (data->motion.vel_pos + size - 1 - i) % size;
+        vx += data->motion.vel_x[idx];
+        vy += data->motion.vel_y[idx];
+        took += data->motion.vel_dt[idx];
     }
-    vx /= data->motion.vel_len;
-    vy /= data->motion.vel_len;
+    took = MAX(took, 1);
+    vx = vx * CONFIG_MCK_IQS5XX_INERTIA_INTERVAL_MS / took;
+    vy = vy * CONFIG_MCK_IQS5XX_INERTIA_INTERVAL_MS / took;
 #if IS_ENABLED(CONFIG_MCK_IQS5XX_MOTION_LOG)
-    LOG_INF("m lift speed (%d, %d)/256", vx, vy);
+    LOG_INF("m lift speed (%d, %d)/256 per step, from %d ms of moves", vx, vy, took);
 #endif
     if (MAX(abs(vx), abs(vy)) < CONFIG_MCK_IQS5XX_INERTIA_MIN_SPEED * 256) {
         return;
@@ -683,12 +721,15 @@ static void iqs5xx_motion_touch(const struct device *dev, uint8_t fingers) {
         }
     }
 
-    LOG_DBG("Inertia: kind %u, speed (%d, %d)/256, %u steps", kind, vx, vy, length * 8);
+    // Keep 1 - 1 / (1 + length) of the speed each step: in all about (1 + length) times the
+    // first step (length 5: 0.84, about 6 times, stops in about 0.4 s).
+    uint16_t keep = 256 - 256 / (1 + length);
+    LOG_DBG("Inertia: kind %u, speed (%d, %d)/256, keep %u/256", kind, vx, vy, keep);
     data->motion.in_kind = kind;
     data->motion.in_vx = vx;
     data->motion.in_vy = vy;
     data->motion.in_step = 0;
-    data->motion.in_steps = length * 8;
+    data->motion.in_keep = keep;
     data->motion.in_rem_x = data->motion.in_rem_y = 0;
     k_work_schedule(&data->motion.inertia_work, K_MSEC(CONFIG_MCK_IQS5XX_INERTIA_INTERVAL_MS));
 }
@@ -808,7 +849,8 @@ static void iqs5xx_work_handler(struct k_work *work) {
         iqs5xx_report_scroll(dev, rel_x, rel_y);
 #if IS_ENABLED(CONFIG_MCK_IQS5XX_MOTION)
         if (rel_x != 0 || rel_y != 0) {
-            iqs5xx_motion_record(data, IQS5XX_MOTION_SCROLL, rel_x * 256, rel_y * 256);
+            iqs5xx_motion_record(data, IQS5XX_MOTION_SCROLL, rel_x * 256, rel_y * 256,
+                                 iqs5xx_motion_dt(data, IQS5XX_MOTION_SCROLL));
         }
         iqs5xx_motion_log('s', rel_x, rel_y, 0, 0);
 #endif
