@@ -518,18 +518,35 @@ static bool iqs5xx_scroll_only(void) {
     return motion_cfg.scroll_only != (atomic_get(&scroll_mode_holds) > 0);
 }
 
+#if IS_ENABLED(CONFIG_MCK_IQS5XX_MOTION_LOG)
+// MCK: 2026-11-27 (D-136 T4) one line per report, to see why slow moves feel jerky and why
+// the inertia starts: kind (c cursor, s scroll, z cursor report with no move, i inertia),
+// ms since the last line, the move from the IC and what was reported.
+static void iqs5xx_motion_log(char kind, int32_t rel_x, int32_t rel_y, int32_t out_x,
+                              int32_t out_y) {
+    static int64_t last_ms;
+    int64_t now = k_uptime_get();
+    uint32_t dt = (uint32_t)MIN(now - last_ms, 99999);
+    last_ms = now;
+    LOG_INF("m %c %u %d %d %d %d", kind, dt, rel_x, rel_y, out_x, out_y);
+}
+#else
+#define iqs5xx_motion_log(...)
+#endif
+
 // Report a move in 1/256 units, keeping the part below one unit in *rem_x / *rem_y.
+// Returns the reported move in *out_x / *out_y.
 static void iqs5xx_emit_cursor(const struct device *dev, int32_t vx, int32_t vy, int32_t *rem_x,
-                               int32_t *rem_y) {
+                               int32_t *rem_y, int32_t *out_x, int32_t *out_y) {
     *rem_x += vx;
     *rem_y += vy;
-    int32_t out_x = *rem_x / 256;
-    int32_t out_y = *rem_y / 256;
-    *rem_x -= out_x * 256;
-    *rem_y -= out_y * 256;
-    if (out_x != 0 || out_y != 0) {
-        input_report_rel(dev, INPUT_REL_X, out_x, false, K_FOREVER);
-        input_report_rel(dev, INPUT_REL_Y, out_y, true, K_FOREVER);
+    *out_x = *rem_x / 256;
+    *out_y = *rem_y / 256;
+    *rem_x -= *out_x * 256;
+    *rem_y -= *out_y * 256;
+    if (*out_x != 0 || *out_y != 0) {
+        input_report_rel(dev, INPUT_REL_X, *out_x, false, K_FOREVER);
+        input_report_rel(dev, INPUT_REL_Y, *out_y, true, K_FOREVER);
     }
 }
 
@@ -574,7 +591,9 @@ static void iqs5xx_cursor(const struct device *dev, int16_t rel_x, int16_t rel_y
     }
 
     iqs5xx_motion_record(data, IQS5XX_MOTION_CURSOR, vx, vy);
-    iqs5xx_emit_cursor(dev, vx, vy, &data->motion.rem_x, &data->motion.rem_y);
+    int32_t out_x, out_y;
+    iqs5xx_emit_cursor(dev, vx, vy, &data->motion.rem_x, &data->motion.rem_y, &out_x, &out_y);
+    iqs5xx_motion_log('c', rel_x, rel_y, out_x, out_y);
 }
 
 static void iqs5xx_inertia_work_handler(struct k_work *work) {
@@ -589,7 +608,10 @@ static void iqs5xx_inertia_work_handler(struct k_work *work) {
     data->motion.in_step++;
 
     if (data->motion.in_kind == IQS5XX_MOTION_CURSOR) {
-        iqs5xx_emit_cursor(dev, vx, vy, &data->motion.in_rem_x, &data->motion.in_rem_y);
+        int32_t out_x, out_y;
+        iqs5xx_emit_cursor(dev, vx, vy, &data->motion.in_rem_x, &data->motion.in_rem_y, &out_x,
+                           &out_y);
+        iqs5xx_motion_log('i', vx, vy, out_x, out_y);
     } else {
         data->motion.in_rem_x += vx;
         data->motion.in_rem_y += vy;
@@ -629,6 +651,11 @@ static void iqs5xx_motion_touch(const struct device *dev, uint8_t fingers) {
     uint8_t length = kind == IQS5XX_MOTION_CURSOR   ? motion_cfg.inertia_cursor
                      : kind == IQS5XX_MOTION_SCROLL ? motion_cfg.inertia_scroll
                                                     : 0;
+#if IS_ENABLED(CONFIG_MCK_IQS5XX_MOTION_LOG)
+    // The ms since the last move, then the averaged speed (1/256) when it is computed.
+    LOG_INF("m lift kind %u, %u ms since the last move, %u moves", kind,
+            (uint32_t)MIN(k_uptime_get() - data->motion.last_ms, 99999), data->motion.vel_len);
+#endif
     if (length == 0 || data->motion.vel_len == 0 ||
         k_uptime_get() - data->motion.last_ms > IQS5XX_INERTIA_LIFT_MS) {
         return;
@@ -641,6 +668,9 @@ static void iqs5xx_motion_touch(const struct device *dev, uint8_t fingers) {
     }
     vx /= data->motion.vel_len;
     vy /= data->motion.vel_len;
+#if IS_ENABLED(CONFIG_MCK_IQS5XX_MOTION_LOG)
+    LOG_INF("m lift speed (%d, %d)/256", vx, vy);
+#endif
     if (MAX(abs(vx), abs(vy)) < CONFIG_MCK_IQS5XX_INERTIA_MIN_SPEED * 256) {
         return;
     }
@@ -780,12 +810,15 @@ static void iqs5xx_work_handler(struct k_work *work) {
         if (rel_x != 0 || rel_y != 0) {
             iqs5xx_motion_record(data, IQS5XX_MOTION_SCROLL, rel_x * 256, rel_y * 256);
         }
+        iqs5xx_motion_log('s', rel_x, rel_y, 0, 0);
 #endif
     } else if (tp_movement) {
 #if IS_ENABLED(CONFIG_MCK_IQS5XX_MOTION)
         // MCK: Correction and acceleration (CONFIG_MCK_IQS5XX_MOTION).
         if (rel_x != 0 || rel_y != 0) {
             iqs5xx_cursor(dev, rel_x, rel_y);
+        } else {
+            iqs5xx_motion_log('z', 0, 0, 0, 0);
         }
 #else
         if (rel_x != 0 || rel_y != 0) {

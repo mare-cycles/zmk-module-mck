@@ -81,9 +81,10 @@ include:
       - mck-iqs5xx-positions
       - mck-iqs5xx-motion
 
-  # Touch log for tuning the 3 / 4 finger gestures (USB logging builds).
+  # Touch log for tuning the 3 / 4 finger gestures, and the move log for the correction,
+  # acceleration and inertia (USB logging builds).
   - artifact: mck_iqs5xx_touch_log
     board: xiao_ble//zmk
     shield: tester_xiao
-    cmake-args: -DCONFIG_MCK_IQS5XX_TOUCH_LOG=y
+    cmake-args: -DCONFIG_MCK_IQS5XX_TOUCH_LOG=y -DCONFIG_MCK_IQS5XX_MOTION_LOG=y -DCONFIG_MCK_IQS5XX_CORRECTION=2 -DCONFIG_MCK_IQS5XX_ACCEL=5 -DCONFIG_MCK_IQS5XX_INERTIA_CURSOR=5
     snippet: mck-iqs5xx

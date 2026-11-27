@@ -178,6 +178,13 @@ config MCK_IQS5XX_INERTIA_MIN_SPEED
     int "Slowest move (per report, trackpad units) that starts inertia"
     default 4
 
+config MCK_IQS5XX_MOTION_LOG
+    bool "Log every move report and inertia step for tuning"
+    help
+      Log, at the info level, one line per cursor / scroll report ("m <kind>
+      <ms since the last line> <IC move x y> <reported move x y>"), what the
+      lift saw for the inertia, and each inertia step. For a USB logging build.
+
 endif # MCK_IQS5XX_MOTION
 
 DT_COMPAT_MCK_BEHAVIOR_TP_SCROLL := mck,behavior-tp-scroll

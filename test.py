@@ -192,6 +192,7 @@ class WestCommandsTests(unittest.TestCase):
                     config=[
                         "CONFIG_MCK_IQS5XX_BLOCK_READ=y",
                         "CONFIG_MCK_IQS5XX_TOUCH_LOG=y",
+                        "CONFIG_MCK_IQS5XX_MOTION_LOG=y",
                     ],
                     device=[
                         "DT_COMPAT_HAS_OKAY_mck_iqs5xx",
