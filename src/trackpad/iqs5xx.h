@@ -203,6 +203,8 @@ struct iqs5xx_data {
     int16_t gate_x[16], gate_y[16];
     uint8_t gate_len, gate_pos;
     bool gate_moving;
+    // Events since it came to rest (while resting), and since it started moving (255 = long).
+    uint8_t gate_rest, gate_since_start;
 #endif
 #if IS_ENABLED(CONFIG_MCK_IQS5XX_TOUCH_LOG)
     // MCK: One touch (from the first finger down to all fingers up), for the touch log.

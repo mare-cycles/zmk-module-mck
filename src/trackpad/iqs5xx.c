@@ -695,7 +695,13 @@ static void iqs5xx_cursor(const struct device *dev, int16_t rel_x, int16_t rel_y
 
     iqs5xx_motion_record(data, IQS5XX_MOTION_CURSOR, vx, vy, dt);
 #if IS_ENABLED(CONFIG_MCK_IQS5XX_LIFT_HOLD)
-    if (MAX(abs(rel_x), abs(rel_y)) <= CONFIG_MCK_IQS5XX_LIFT_HOLD_MAX) {
+    bool wait = MAX(abs(rel_x), abs(rel_y)) <= CONFIG_MCK_IQS5XX_LIFT_HOLD_MAX;
+#if IS_ENABLED(CONFIG_MCK_IQS5XX_REST_GATE)
+    // 2026-11-28: lifting after resting on a target, the last event moves by 10-15 and starts
+    // the rest gate (liftlog): moves just after a start from rest wait too, whatever their size.
+    wait = wait || data->gate_since_start < CONFIG_MCK_IQS5XX_LIFT_HOLD_AFTER_START;
+#endif
+    if (wait) {
         if (data->motion.hold_len == ARRAY_SIZE(data->motion.hold_x)) {
             iqs5xx_hold_release(dev, true);
         }
@@ -1121,21 +1127,36 @@ static void iqs5xx_work_handler(struct k_work *work) {
             sy += data->gate_y[i];
         }
         const int32_t net = abs(sx) + abs(sy);
+        // Once it has rested a while (on a target), a finger slowly rolling there must not move
+        // the cursor: a restart then needs REST_GATE_STICKY (2026-11-28, liftlog: the cursor
+        // moved 164 on targets, 95 with 24).
+        const int32_t start = data->gate_rest >= CONFIG_MCK_IQS5XX_REST_GATE_STICKY_EVENTS
+                                  ? CONFIG_MCK_IQS5XX_REST_GATE_STICKY
+                                  : CONFIG_MCK_IQS5XX_REST_GATE_START;
         if (data->gate_moving && net < CONFIG_MCK_IQS5XX_REST_GATE_STOP) {
             data->gate_moving = false;
+            data->gate_rest = 0;
 #if IS_ENABLED(CONFIG_MCK_IQS5XX_EVENT_LOG)
             LOG_INF("g 0 %d", net);
 #endif
-        } else if (!data->gate_moving && net >= CONFIG_MCK_IQS5XX_REST_GATE_START) {
+        } else if (!data->gate_moving && net >= start) {
             data->gate_moving = true;
+            data->gate_since_start = 0;
 #if IS_ENABLED(CONFIG_MCK_IQS5XX_EVENT_LOG)
             LOG_INF("g 1 %d", net);
 #endif
+        } else if (!data->gate_moving) {
+            data->gate_rest = MIN(data->gate_rest + 1, 255);
+        } else {
+            // 0 on the event it started, 1 on the next one, ...
+            data->gate_since_start = MIN(data->gate_since_start + 1, 255);
         }
         tp_movement = data->gate_moving;
     } else {
         data->gate_len = data->gate_pos = 0;
         data->gate_moving = false;
+        data->gate_rest = 0;
+        data->gate_since_start = 255;
     }
 #elif IS_ENABLED(CONFIG_MCK_IQS5XX_KEEP_SLOW_MOVES)
     // MCK: 2026-11-28 (D-136 T7-1) in a slow move TP_MOVEMENT comes and goes (the IC calls the

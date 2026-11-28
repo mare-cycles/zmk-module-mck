@@ -203,6 +203,15 @@ config MCK_IQS5XX_LIFT_HOLD_EVENTS
     range 1 3
     default 2
 
+config MCK_IQS5XX_LIFT_HOLD_AFTER_START
+    int "Moves this many events after a start from rest wait too, whatever their size"
+    depends on MCK_IQS5XX_LIFT_HOLD && MCK_IQS5XX_REST_GATE
+    default 2
+    help
+      Lifting a finger that rested on a target, its last event moves by
+      10-15, which starts the rest gate and is bigger than
+      MCK_IQS5XX_LIFT_HOLD_MAX. 0 turns this off.
+
 config MCK_IQS5XX_TAP_DRAG
     bool "Tap and drag (can be turned on through mck__trackpad)"
     default y
@@ -315,6 +324,20 @@ config MCK_IQS5XX_REST_GATE_STOP
     int "Net movement below which a move comes to rest (IC units)"
     depends on MCK_IQS5XX_REST_GATE
     default 3
+
+config MCK_IQS5XX_REST_GATE_STICKY
+    int "Net movement that starts a move after resting a while (on a target)"
+    depends on MCK_IQS5XX_REST_GATE
+    default 24
+    help
+      A finger resting on a button rolls slowly; after resting
+      MCK_IQS5XX_REST_GATE_STICKY_EVENTS events a restart needs this much
+      instead of MCK_IQS5XX_REST_GATE_START.
+
+config MCK_IQS5XX_REST_GATE_STICKY_EVENTS
+    int "Events at rest (about 15 ms each) after which the bigger restart applies"
+    depends on MCK_IQS5XX_REST_GATE
+    default 13
 
 config MCK_IQS5XX_EVENT_LOG
     bool "Log every IC event (moves, flags, finger 1 position) for tuning"
