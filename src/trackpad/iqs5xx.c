@@ -898,6 +898,20 @@ static void iqs5xx_work_handler(struct k_work *work) {
     iqs5xx_touch_log(data, &st);
 #endif
 
+#if IS_ENABLED(CONFIG_MCK_IQS5XX_EVENT_LOG)
+    // MCK: 2026-11-28 (D-136 T7-1) every event as the IC sent it, also those the cursor does
+    // not use (no TP_MOVEMENT): ms since the last event, fingers, system info 1 (bit 0
+    // TP_MOVEMENT), gesture events 0 / 1, relative X / Y, finger 1 absolute X / Y.
+    {
+        static int64_t last_ev_ms;
+        int64_t now = k_uptime_get();
+        LOG_INF("e %u %u %02x %02x %02x %d %d %u %u", (uint32_t)MIN(now - last_ev_ms, 99999),
+                st.num_fingers, st.sys_info_1, st.gesture_events_0, st.gesture_events_1, st.rel_x,
+                st.rel_y, st.fingers[0].x, st.fingers[0].y);
+        last_ev_ms = now;
+    }
+#endif
+
     // MCK: While 3 / 4 fingers are down (until all are up), report only their gestures.
     bool multi_finger = false;
 #if IS_ENABLED(CONFIG_MCK_IQS5XX_GESTURES)

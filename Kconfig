@@ -227,6 +227,17 @@ config MCK_IQS5XX_TOUCH_LOG
       center moved and the gestures the IC reported. For a USB logging
       build, to choose the values of the 3 / 4 finger gestures.
 
+config MCK_IQS5XX_EVENT_LOG
+    bool "Log every IC event (moves, flags, finger 1 position) for tuning"
+    depends on MCK_IQS5XX_BLOCK_READ
+    select MCK_IQS5XX_FINGER_DATA
+    help
+      One line per event, at the info level: "e <ms since the last event>
+      <fingers> <system info 1> <gesture events 0> <gesture events 1>
+      <relative x y> <finger 1 absolute x y>", also for the events the cursor
+      does not use (no TP_MOVEMENT). For a USB logging build, to see how slow
+      moves arrive.
+
 config MCK_IQS5XX_IC_TUNING
     bool "Change some values of the IC itself at runtime (slow moves, taps)"
     default y
