@@ -227,6 +227,16 @@ config MCK_IQS5XX_TOUCH_LOG
       center moved and the gestures the IC reported. For a USB logging
       build, to choose the values of the 3 / 4 finger gestures.
 
+config MCK_IQS5XX_KEEP_SLOW_MOVES
+    bool "Keep the moves of a slow touch that the IC briefly calls stationary"
+    default y
+    help
+      The cursor (and scroll only) use a move only when the IC sets
+      TP_MOVEMENT. In a slow move it comes and goes, and dropping those moves
+      makes the cursor stutter as it slows down. With this, a move without
+      TP_MOVEMENT is still used when at least 2 of the last 4 events of the
+      touch had it. A resting finger rarely has it, so it still moves nothing.
+
 config MCK_IQS5XX_EVENT_LOG
     bool "Log every IC event (moves, flags, finger 1 position) for tuning"
     depends on MCK_IQS5XX_BLOCK_READ

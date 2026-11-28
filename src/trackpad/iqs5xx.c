@@ -931,6 +931,19 @@ static void iqs5xx_work_handler(struct k_work *work) {
 #endif
 
     bool tp_movement = (st.sys_info_1 & IQS5XX_TP_MOVEMENT) != 0;
+#if IS_ENABLED(CONFIG_MCK_IQS5XX_KEEP_SLOW_MOVES)
+    // MCK: 2026-11-28 (D-136 T7-1) in a slow move TP_MOVEMENT comes and goes (the IC calls the
+    // touch stationary in between), and the moves of the events without it were dropped: the
+    // cursor stuttered as it slowed down (event log: 1-2 tenths of the move lost). Keep them
+    // while at least 2 of the last 4 events had TP_MOVEMENT; a resting finger (rare, single
+    // TP_MOVEMENT events) still moves nothing.
+    {
+        const bool recent = __builtin_popcount(data->movement_hist & 0x0F) >= 2;
+        data->movement_hist =
+            st.num_fingers > 0 ? (uint8_t)(data->movement_hist << 1) | (tp_movement ? 1 : 0) : 0;
+        tp_movement = tp_movement || (recent && st.num_fingers > 0);
+    }
+#endif
     bool scroll = (st.gesture_events_1 & IQS5XX_SCROLL) != 0;
     if (!scroll && !(scroll_only && tp_movement)) {
         // Clear accumulators if we're not actively scrolling.

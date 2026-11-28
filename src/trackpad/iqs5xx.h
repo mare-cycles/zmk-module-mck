@@ -191,6 +191,10 @@ struct iqs5xx_data {
     // MCK: The change count of the IC values (mck_trackpad_set_ic) last written to this IC.
     atomic_val_t ic_written;
 #endif
+#if IS_ENABLED(CONFIG_MCK_IQS5XX_KEEP_SLOW_MOVES)
+    // MCK: TP_MOVEMENT of the last events of this touch, newest in bit 0.
+    uint8_t movement_hist;
+#endif
 #if IS_ENABLED(CONFIG_MCK_IQS5XX_TOUCH_LOG)
     // MCK: One touch (from the first finger down to all fingers up), for the touch log.
     struct {
