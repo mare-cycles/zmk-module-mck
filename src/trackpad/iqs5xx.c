@@ -24,6 +24,8 @@
  * MCK: 2026-11-28 (D-136 T7-1) some values of the IC itself (stationary threshold, dynamic
  * filter, idle touch rate, tap time) can be changed at runtime (MCK_IQS5XX_IC_TUNING); until
  * then the IC keeps its own.
+ *
+ * MCK: 2026-11-28 (D-136 T7-4a) tap and drag (MCK_IQS5XX_TAP_DRAG).
  */
 
 #define DT_DRV_COMPAT mck_iqs5xx
@@ -168,10 +170,17 @@ static bool iqs5xx_press_gesture(const struct device *dev, uint8_t gesture) {
     return true;
 }
 
+static void iqs5xx_release_all(struct iqs5xx_data *data);
+
 static void iqs5xx_button_release_work_handler(struct k_work *work) {
     struct k_work_delayable *dwork = k_work_delayable_from_work(work);
     struct iqs5xx_data *data = CONTAINER_OF(dwork, struct iqs5xx_data, button_release_work);
 
+    iqs5xx_release_all(data);
+}
+
+// MCK: Release what a gesture pressed: its key position and the synthetic buttons.
+static void iqs5xx_release_all(struct iqs5xx_data *data) {
     // MCK: Release the key position of a gesture.
     iqs5xx_release_position(data);
 
@@ -509,6 +518,7 @@ static struct mck_trackpad_motion motion_cfg = {
     .inertia_cursor = CONFIG_MCK_IQS5XX_INERTIA_CURSOR,
     .inertia_scroll = CONFIG_MCK_IQS5XX_INERTIA_SCROLL,
     .scroll_only = IS_ENABLED(CONFIG_MCK_IQS5XX_SCROLL_ONLY),
+    .tap_drag = IS_ENABLED(CONFIG_MCK_IQS5XX_TAP_DRAG_ON),
 };
 static atomic_t scroll_mode_holds;
 
@@ -521,6 +531,7 @@ void mck_trackpad_get_default_motion(struct mck_trackpad_motion *motion) {
         .inertia_cursor = CONFIG_MCK_IQS5XX_INERTIA_CURSOR,
         .inertia_scroll = CONFIG_MCK_IQS5XX_INERTIA_SCROLL,
         .scroll_only = IS_ENABLED(CONFIG_MCK_IQS5XX_SCROLL_ONLY),
+        .tap_drag = IS_ENABLED(CONFIG_MCK_IQS5XX_TAP_DRAG_ON),
     };
 }
 
@@ -530,6 +541,7 @@ void mck_trackpad_set_motion(const struct mck_trackpad_motion *motion) {
     motion_cfg.inertia_cursor = MIN(motion->inertia_cursor, 9);
     motion_cfg.inertia_scroll = MIN(motion->inertia_scroll, 9);
     motion_cfg.scroll_only = motion->scroll_only;
+    motion_cfg.tap_drag = IS_ENABLED(CONFIG_MCK_IQS5XX_TAP_DRAG) && motion->tap_drag;
 }
 
 void mck_trackpad_scroll_mode(bool pressed) {
@@ -821,6 +833,86 @@ static void iqs5xx_motion_touch(const struct device *dev, uint8_t fingers) {
 }
 #endif // IS_ENABLED(CONFIG_MCK_IQS5XX_MOTION)
 
+#if IS_ENABLED(CONFIG_MCK_IQS5XX_TAP_DRAG)
+// MCK: 2026-11-28 (D-136 T7-4a) tap and drag, as the GR-Trackpad65 kit does: a one finger
+// touch that starts within CONFIG_MCK_IQS5XX_TAP_DRAG_WINDOW_MS of a one finger tap and moves
+// (CONFIG_MCK_IQS5XX_TAP_DRAG_MOVE) or stays (CONFIG_MCK_IQS5XX_TAP_DRAG_HOLD_MS) keeps the
+// one finger tap's key position (BTN_0 without gesture-positions) pressed until it lifts.
+// A second touch that lifts at once stays a tap (a double click).
+#define IQS5XX_DRAG_IDLE 0 // no touch yet, or the last one ended
+#define IQS5XX_DRAG_WAIT 1 // a touch after a tap: a drag if it moves or stays
+#define IQS5XX_DRAG_ON 2   // dragging
+#define IQS5XX_DRAG_NO 3   // this touch is not a drag
+
+static void iqs5xx_drag_press(const struct device *dev) {
+    const struct iqs5xx_config *config = dev->config;
+    struct iqs5xx_data *data = dev->data;
+
+    // The tap before may still be pressed (it is released 100 ms later): release it first.
+    k_work_cancel_delayable(&data->button_release_work);
+    iqs5xx_release_all(data);
+
+    if (config->gesture_positions_len > IQS5XX_GESTURE_TAP_1 &&
+        config->gesture_positions[IQS5XX_GESTURE_TAP_1] < ZMK_KEYMAP_LEN) {
+        data->pressed_position = config->gesture_positions[IQS5XX_GESTURE_TAP_1];
+        iqs5xx_raise_position(data->pressed_position, true);
+    } else {
+        input_report_key(dev, INPUT_BTN_0, 1, true, K_FOREVER);
+        data->buttons_pressed |= BIT(0);
+    }
+    LOG_INF("Tap and drag: pressed");
+}
+
+// Follow the touch for tap and drag. Returns true when an IC tap of this event belongs to a
+// drag (it is not a click then).
+static bool iqs5xx_tap_drag(const struct device *dev, const struct iqs5xx_status *st) {
+    struct iqs5xx_data *data = dev->data;
+    const int64_t now = k_uptime_get();
+    const uint8_t fingers = st->num_fingers;
+
+    switch (data->motion.drag_state) {
+    case IQS5XX_DRAG_IDLE:
+        if (fingers == 1 && motion_cfg.tap_drag && data->motion.drag_tap_ms != 0 &&
+            now - data->motion.drag_tap_ms <= CONFIG_MCK_IQS5XX_TAP_DRAG_WINDOW_MS) {
+            data->motion.drag_state = IQS5XX_DRAG_WAIT;
+            data->motion.drag_start_ms = now;
+            data->motion.drag_move = 0;
+        } else if (fingers > 0) {
+            data->motion.drag_state = IQS5XX_DRAG_NO;
+        }
+        break;
+    case IQS5XX_DRAG_WAIT:
+        if (fingers == 1) {
+            data->motion.drag_move += abs(st->rel_x) + abs(st->rel_y);
+            if (data->motion.drag_move >= CONFIG_MCK_IQS5XX_TAP_DRAG_MOVE ||
+                now - data->motion.drag_start_ms >= CONFIG_MCK_IQS5XX_TAP_DRAG_HOLD_MS) {
+                data->motion.drag_state = IQS5XX_DRAG_ON;
+                data->motion.drag_tap_ms = 0;
+                iqs5xx_drag_press(dev);
+            }
+        } else {
+            data->motion.drag_state = fingers == 0 ? IQS5XX_DRAG_IDLE : IQS5XX_DRAG_NO;
+        }
+        break;
+    case IQS5XX_DRAG_ON:
+        if (fingers != 1) {
+            k_work_cancel_delayable(&data->button_release_work);
+            iqs5xx_release_all(data);
+            LOG_INF("Tap and drag: released");
+            data->motion.drag_state = fingers == 0 ? IQS5XX_DRAG_IDLE : IQS5XX_DRAG_NO;
+            return (st->gesture_events_0 & IQS5XX_SINGLE_TAP) != 0;
+        }
+        break;
+    default: // IQS5XX_DRAG_NO
+        if (fingers == 0) {
+            data->motion.drag_state = IQS5XX_DRAG_IDLE;
+        }
+        break;
+    }
+    return false;
+}
+#endif // IS_ENABLED(CONFIG_MCK_IQS5XX_TAP_DRAG)
+
 #if IS_ENABLED(CONFIG_MCK_IQS5XX_IC_TUNING)
 // MCK: 2026-11-28 (D-136 T7-1) values of the IC itself (struct mck_trackpad_ic), changed at
 // runtime through mck__trackpad. Slow moves arrived every 100-200 ms: a touch within the
@@ -1025,9 +1117,18 @@ static void iqs5xx_work_handler(struct k_work *work) {
 
     uint16_t button_code;
     bool button_pressed = false;
-    if (st.gesture_events_0 & IQS5XX_SINGLE_TAP) {
+    bool drag_tap = false;
+#if IS_ENABLED(CONFIG_MCK_IQS5XX_TAP_DRAG)
+    // MCK: A tap at the end of a drag is not a click.
+    drag_tap = iqs5xx_tap_drag(dev, &st);
+#endif
+    if ((st.gesture_events_0 & IQS5XX_SINGLE_TAP) && !drag_tap) {
         button_pressed = true;
         button_code = INPUT_BTN_0;
+#if IS_ENABLED(CONFIG_MCK_IQS5XX_TAP_DRAG)
+        // MCK: A touch soon after this tap may become a drag.
+        data->motion.drag_tap_ms = k_uptime_get();
+#endif
     } else if (st.gesture_events_1 & IQS5XX_TWO_FINGER_TAP) {
         button_pressed = true;
         button_code = INPUT_BTN_1;

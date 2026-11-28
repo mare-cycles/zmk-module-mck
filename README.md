@@ -206,6 +206,12 @@ returned as `defaults`); `ResetIc` goes back to them. A board can start from oth
 the devicetree properties `bottom-beta`, `stationary-threshold`, `idle-touch-rate-ms` and
 `tap-time-ms` (written at setup, so they are then the `defaults`).
 
+**Tap and drag** (`CONFIG_MCK_IQS5XX_TAP_DRAG`, default y; on at first with
+`CONFIG_MCK_IQS5XX_TAP_DRAG_ON`, then the movement setting `tap_drag`): a one finger touch that
+starts within 250 ms of a one finger tap and moves (10) or stays (150 ms) keeps the one finger
+tap's key position pressed until the finger lifts. A second touch that lifts at once is still a
+tap, so a double tap stays a double click.
+
 `CONFIG_MCK_IQS5XX_TOUCH_LOG` (for a USB logging build) logs every touch: the finger count as
 it changes, and when all fingers are up, the most fingers, the duration, how far their center
 moved and the gestures the IC reported. `CONFIG_MCK_IQS5XX_MOTION_LOG` logs every move report

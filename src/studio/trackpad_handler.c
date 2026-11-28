@@ -45,6 +45,7 @@ static void fill_motion(mck_trackpad_Response *resp) {
     m->inertia_cursor = v.inertia_cursor;
     m->inertia_scroll = v.inertia_scroll;
     m->scroll_only = v.scroll_only;
+    m->tap_drag = v.tap_drag;
 }
 
 static void handle_get_info(mck_trackpad_Response *resp) {
@@ -58,6 +59,7 @@ static void handle_get_info(mck_trackpad_Response *resp) {
     r->gestures_supported = info.gestures;
     r->gesture_position_count = info.gesture_position_count;
     r->ic_supported = IS_ENABLED(CONFIG_MCK_IQS5XX_IC_TUNING);
+    r->tap_drag_supported = IS_ENABLED(CONFIG_MCK_IQS5XX_TAP_DRAG);
 }
 
 #if IS_ENABLED(CONFIG_MCK_IQS5XX_IC_TUNING)
@@ -112,6 +114,7 @@ static void handle_set_motion(const mck_trackpad_SetMotionRequest *req,
             .inertia_cursor = (uint8_t)MIN(req->motion.inertia_cursor, 255),
             .inertia_scroll = (uint8_t)MIN(req->motion.inertia_scroll, 255),
             .scroll_only = req->motion.scroll_only,
+            .tap_drag = req->motion.tap_drag,
         });
     }
     fill_motion(resp);

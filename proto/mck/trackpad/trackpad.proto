@@ -20,6 +20,8 @@ message GetInfoResponse {
     uint32 gesture_position_count = 4;
     // The IC values below can be changed (CONFIG_MCK_IQS5XX_IC_TUNING)
     bool ic_supported = 5;
+    // Motion.tap_drag works (CONFIG_MCK_IQS5XX_TAP_DRAG)
+    bool tap_drag_supported = 6;
 }
 
 message Motion {
@@ -33,6 +35,9 @@ message Motion {
     uint32 inertia_scroll = 4;
     // One finger scrolls instead of moving the cursor (&tp_scroll swaps it while held)
     bool scroll_only = 5;
+    // Tap, then touch again and move (or hold): the one finger tap's key stays pressed until
+    // the finger lifts (a drag). Only with GetInfoResponse.tap_drag_supported
+    bool tap_drag = 6;
 }
 
 message GetMotionRequest {}

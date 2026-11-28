@@ -27,7 +27,9 @@
 LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 
 #define TP_SETTINGS_KEY "mck/tp/motion"
-#define TP_SETTINGS_VERSION 1
+// 2: tap_drag (2026-11-28, D-136 T7-4a). Version 1 (without it) is still read.
+#define TP_SETTINGS_VERSION 2
+#define TP_SETTINGS_V1_SIZE 6
 
 // What is saved. Add fields at the end (and keep reading the shorter old ones).
 struct tp_saved_motion {
@@ -37,6 +39,7 @@ struct tp_saved_motion {
     uint8_t inertia_cursor;
     uint8_t inertia_scroll;
     uint8_t scroll_only;
+    uint8_t tap_drag;
 } __packed;
 
 #if IS_ENABLED(CONFIG_MCK_IQS5XX_IC_TUNING)
@@ -93,15 +96,20 @@ static int tp_settings_load_cb(const char *name, size_t len, settings_read_cb re
         return -ENOENT;
     }
     struct tp_saved_motion saved;
-    if (len != sizeof(saved)) {
+    if (len != sizeof(saved) && len != TP_SETTINGS_V1_SIZE) {
         LOG_WRN("Trackpad settings of an unknown size (%zu), not used", len);
         return 0;
     }
-    int rc = read_cb(cb_arg, &saved, sizeof(saved));
+    int rc = read_cb(cb_arg, &saved, len);
     if (rc < 0) {
         return rc;
     }
-    if (saved.version != TP_SETTINGS_VERSION) {
+    if (len == TP_SETTINGS_V1_SIZE && saved.version == 1) {
+        // Saved before tap and drag: it starts as the firmware sets it.
+        struct mck_trackpad_motion def;
+        mck_trackpad_get_default_motion(&def);
+        saved.tap_drag = def.tap_drag ? 1 : 0;
+    } else if (len != sizeof(saved) || saved.version != TP_SETTINGS_VERSION) {
         LOG_WRN("Trackpad settings version %u, not used", saved.version);
         return 0;
     }
@@ -111,10 +119,12 @@ static int tp_settings_load_cb(const char *name, size_t len, settings_read_cb re
         .inertia_cursor = saved.inertia_cursor,
         .inertia_scroll = saved.inertia_scroll,
         .scroll_only = saved.scroll_only != 0,
+        .tap_drag = saved.tap_drag != 0,
     });
-    LOG_INF("Trackpad settings loaded: correction %u, accel %u, inertia %u / %u, scroll only %u",
+    LOG_INF("Trackpad settings loaded: correction %u, accel %u, inertia %u / %u, scroll only %u, "
+            "tap and drag %u",
             saved.correction, saved.accel, saved.inertia_cursor, saved.inertia_scroll,
-            saved.scroll_only);
+            saved.scroll_only, saved.tap_drag);
     return 0;
 }
 
@@ -131,6 +141,7 @@ static void tp_save_work_cb(struct k_work *work) {
         .inertia_cursor = m.inertia_cursor,
         .inertia_scroll = m.inertia_scroll,
         .scroll_only = m.scroll_only ? 1 : 0,
+        .tap_drag = m.tap_drag ? 1 : 0,
     };
     int err = settings_save_one(TP_SETTINGS_KEY, &saved, sizeof(saved));
     if (err < 0) {

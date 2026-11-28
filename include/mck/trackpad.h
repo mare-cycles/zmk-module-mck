@@ -20,6 +20,9 @@ struct mck_trackpad_motion {
     uint8_t inertia_scroll;
     // One finger scrolls instead of moving the cursor.
     bool scroll_only;
+    // 2026-11-28 (D-136 T7-4a) tap, then touch again and move (or hold): the one finger tap's
+    // key position stays pressed until the finger lifts (CONFIG_MCK_IQS5XX_TAP_DRAG).
+    bool tap_drag;
 };
 
 // The settings in use (the Kconfig defaults until changed).

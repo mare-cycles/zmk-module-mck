@@ -263,6 +263,13 @@ struct iqs5xx_data {
         uint8_t hold_len;
         uint32_t ev_count;
 #endif
+#if IS_ENABLED(CONFIG_MCK_IQS5XX_TAP_DRAG)
+        // Tap and drag: when the last one finger tap was (0 = none), and this touch.
+        int64_t drag_tap_ms;
+        int64_t drag_start_ms;
+        int32_t drag_move;
+        uint8_t drag_state;
+#endif
     } motion;
 #endif
 };
