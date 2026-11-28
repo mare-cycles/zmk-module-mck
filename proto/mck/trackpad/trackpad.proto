@@ -1,0 +1,62 @@
+syntax = "proto3";
+
+// mck__trackpad: the trackpad (mck,iqs5xx) movement settings for MCK Aquarium.
+// A change takes effect at once and is saved on the keyboard (a moment later,
+// so a slider sends many changes but writes the flash once). The settings
+// stay over a power off and a firmware update, and settings_reset clears them.
+package mck.trackpad;
+
+message GetInfoRequest {}
+
+message GetInfoResponse {
+    // The movement settings below can be changed (CONFIG_MCK_IQS5XX_MOTION)
+    bool motion_supported = 1;
+    // &tp_scroll is in this build (CONFIG_MCK_BEHAVIOR_TP_SCROLL)
+    bool tp_scroll_supported = 2;
+    // 3 / 4 finger taps and swipes are judged (CONFIG_MCK_IQS5XX_GESTURES and
+    // gesture-positions in the devicetree)
+    bool gestures_supported = 3;
+    // Number of key positions the taps / swipes press (gesture-positions)
+    uint32 gesture_position_count = 4;
+}
+
+message Motion {
+    // Average of the last N moves, 1-9 (1 = off)
+    uint32 correction = 1;
+    // Acceleration strength, 0-9 (0 = off)
+    uint32 accel = 2;
+    // Cursor inertia length, 0-9 (0 = off)
+    uint32 inertia_cursor = 3;
+    // Two finger scroll inertia length, 0-9 (0 = off)
+    uint32 inertia_scroll = 4;
+    // One finger scrolls instead of moving the cursor (&tp_scroll swaps it while held)
+    bool scroll_only = 5;
+}
+
+message GetMotionRequest {}
+
+// Applies and saves `motion` (out of range values are clamped)
+message SetMotionRequest { Motion motion = 1; }
+
+// Back to the values the firmware was built with, and forget the saved ones
+message ResetMotionRequest {}
+
+message Request {
+    oneof request_type {
+        GetInfoRequest get_info = 1;
+        GetMotionRequest get_motion = 2;
+        SetMotionRequest set_motion = 3;
+        ResetMotionRequest reset_motion = 4;
+    }
+}
+
+message ErrorResponse { string message = 1; }
+
+message Response {
+    oneof response_type {
+        ErrorResponse error = 1;
+        GetInfoResponse get_info = 2;
+        // Answer to GetMotion, SetMotion and ResetMotion (the values now in effect)
+        Motion motion = 3;
+    }
+}

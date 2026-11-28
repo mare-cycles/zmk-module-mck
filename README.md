@@ -180,17 +180,25 @@ no cursor movement, scroll or IC tap is reported.
 
 **Motion** (`CONFIG_MCK_IQS5XX_MOTION`, default y, everything off by default = the movement is
 reported as before): `CONFIG_MCK_IQS5XX_CORRECTION` (average of the last N moves, 1-9),
-`..._ACCEL` (0-9), `..._INERTIA_CURSOR` / `..._INERTIA_SCROLL` (0-9: after lifting a quick move,
-it goes on and slows down over length * 8 steps; touching stops it) and `..._SCROLL_ONLY` (one
-finger scrolls). `&tp_scroll` swaps scroll only while held:
+`..._ACCEL` (0-9, the speed is measured per time), `..._INERTIA_CURSOR` / `..._INERTIA_SCROLL`
+(0-9: after lifting a quick move, it goes on and slows down by 1 - 1 / (1 + length) each step;
+touching stops it) and `..._SCROLL_ONLY` (one finger scrolls). `&tp_scroll` swaps scroll only
+while held:
 
 ```dts
 #include <behaviors/mck_trackpad.dtsi>   // in the keymap, then bind &tp_scroll
 ```
 
+These are only the starting values: with ZMK Studio, the **`mck__trackpad`** custom RPC
+subsystem (`CONFIG_MCK_TRACKPAD_STUDIO_RPC`, default y; `proto/mck/trackpad/trackpad.proto`)
+reads and changes them at runtime. A change takes effect at once and is saved
+`CONFIG_MCK_TRACKPAD_SAVE_DELAY_MS` (1000) later in the setting `mck/tp/motion`
+(`CONFIG_MCK_TRACKPAD_SETTINGS`); `ResetMotion` goes back to the Kconfig values.
+
 `CONFIG_MCK_IQS5XX_TOUCH_LOG` (for a USB logging build) logs every touch: the finger count as
 it changes, and when all fingers are up, the most fingers, the duration, how far their center
-moved and the gestures the IC reported.
+moved and the gestures the IC reported. `CONFIG_MCK_IQS5XX_MOTION_LOG` logs every move report
+and inertia step.
 
 ## Development
 

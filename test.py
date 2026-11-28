@@ -182,6 +182,8 @@ class WestCommandsTests(unittest.TestCase):
                         "CONFIG_MCK_IQS5XX_INERTIA_SCROLL=5",
                         "CONFIG_MCK_IQS5XX_SCROLL_ONLY=y",
                         "CONFIG_MCK_BEHAVIOR_TP_SCROLL=y",
+                        "CONFIG_MCK_TRACKPAD_SETTINGS=y",
+                        "CONFIG_MCK_TRACKPAD_STUDIO_RPC=y",
                     ],
                     device=[
                         "DT_COMPAT_HAS_OKAY_mck_iqs5xx",

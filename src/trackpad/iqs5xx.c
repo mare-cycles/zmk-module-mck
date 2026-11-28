@@ -510,6 +510,16 @@ static atomic_t scroll_mode_holds;
 
 void mck_trackpad_get_motion(struct mck_trackpad_motion *motion) { *motion = motion_cfg; }
 
+void mck_trackpad_get_default_motion(struct mck_trackpad_motion *motion) {
+    *motion = (struct mck_trackpad_motion){
+        .correction = CONFIG_MCK_IQS5XX_CORRECTION,
+        .accel = CONFIG_MCK_IQS5XX_ACCEL,
+        .inertia_cursor = CONFIG_MCK_IQS5XX_INERTIA_CURSOR,
+        .inertia_scroll = CONFIG_MCK_IQS5XX_INERTIA_SCROLL,
+        .scroll_only = IS_ENABLED(CONFIG_MCK_IQS5XX_SCROLL_ONLY),
+    };
+}
+
 void mck_trackpad_set_motion(const struct mck_trackpad_motion *motion) {
     motion_cfg.correction = CLAMP(motion->correction, 1, 9);
     motion_cfg.accel = MIN(motion->accel, 9);
@@ -1136,3 +1146,15 @@ static int iqs5xx_init(const struct device *dev) {
                           CONFIG_INPUT_INIT_PRIORITY, NULL);
 
 DT_INST_FOREACH_STATUS_OKAY(IQS5XX_INIT)
+
+// MCK: 2026-11-28 (D-136 T5) for mck__trackpad: what the first trackpad does.
+void mck_trackpad_get_info(struct mck_trackpad_info *info) {
+    *info = (struct mck_trackpad_info){0};
+#if DT_HAS_COMPAT_STATUS_OKAY(DT_DRV_COMPAT)
+    const struct iqs5xx_config *config = DEVICE_DT_GET(DT_DRV_INST(0))->config;
+    info->gesture_position_count = config->gesture_positions_len;
+#if IS_ENABLED(CONFIG_MCK_IQS5XX_GESTURES)
+    info->gestures = iqs5xx_gestures_enabled(config);
+#endif
+#endif
+}

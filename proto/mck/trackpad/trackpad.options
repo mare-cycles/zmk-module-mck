@@ -1,0 +1,4 @@
+# Nanopb options file for trackpad.proto
+# Every string / repeated field needs a fixed size (plain structs, no callbacks).
+
+mck.trackpad.ErrorResponse.message              max_size:64

@@ -189,6 +189,24 @@ config MCK_IQS5XX_MOTION_LOG
       <ms since the last line> <IC move x y> <reported move x y>"), what the
       lift saw for the inertia, and each inertia step. For a USB logging build.
 
+config MCK_TRACKPAD_SETTINGS
+    bool "Keep the movement settings in flash (mck/tp/motion)"
+    depends on SETTINGS
+    default y
+    help
+      The settings changed at runtime (mck__trackpad) are saved and used again
+      after a power off or a firmware update. settings_reset clears them.
+
+config MCK_TRACKPAD_SAVE_DELAY_MS
+    int "Wait after a change before saving it (ms), so many changes write once"
+    depends on MCK_TRACKPAD_SETTINGS
+    default 1000
+
+config MCK_TRACKPAD_STUDIO_RPC
+    bool "Change the movement settings over the custom ZMK Studio RPC (mck__trackpad)"
+    depends on ZMK_STUDIO && MCK_TRACKPAD_SETTINGS
+    default y
+
 endif # MCK_IQS5XX_MOTION
 
 DT_COMPAT_MCK_BEHAVIOR_TP_SCROLL := mck,behavior-tp-scroll
