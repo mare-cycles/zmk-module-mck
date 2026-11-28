@@ -73,6 +73,20 @@ properties:
       How far a finger must move (in pixels) to not be considered stationary.
       No default: when omitted, the module's own value is kept.
 
+  # MCK: 2026-11-28 (D-136 T7-2)
+  idle-touch-rate-ms:
+    type: int
+    description: |
+      Cycle (ms) while a touch is stationary (0x057C). A short one (as the active
+      rate) keeps slow moves smooth; a touch costs a little more power.
+      No default: when omitted, the module's own value is kept.
+
+  tap-time-ms:
+    type: int
+    description: |
+      A one / two finger tap must be released within this many ms (0x06B9).
+      No default: when omitted, the module's own value is kept.
+
   # MCK: 2026-11-25 (D-136 T2)
   gesture-positions:
     type: array

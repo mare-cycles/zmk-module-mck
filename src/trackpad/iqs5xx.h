@@ -153,6 +153,9 @@ struct iqs5xx_config {
     // GRT65W: -1 means "not set in the devicetree, keep the module's value".
     int16_t bottom_beta;
     int16_t stationary_threshold;
+    // MCK: 2026-11-28 (D-136 T7-2) -1 when not set, like the two above.
+    int32_t idle_touch_rate_ms;
+    int32_t tap_time_ms;
 
     // MCK: Key positions pressed by the gestures (gesture-positions, IQS5XX_GESTURE_*).
     // NULL / 0 when the property is not set.

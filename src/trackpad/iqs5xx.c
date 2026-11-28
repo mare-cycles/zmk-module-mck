@@ -1109,6 +1109,23 @@ static int iqs5xx_setup_device(const struct device *dev) {
         }
     }
 
+    // MCK: 2026-11-28 (D-136 T7-2) the same for the idle touch rate and the tap time.
+    if (config->idle_touch_rate_ms >= 0) {
+        ret = iqs5xx_write_reg16(dev, IQS5XX_IDLE_TOUCH_RATE, config->idle_touch_rate_ms);
+        if (ret < 0) {
+            LOG_ERR("Failed to set the idle touch rate: %d", ret);
+            return ret;
+        }
+    }
+
+    if (config->tap_time_ms >= 0) {
+        ret = iqs5xx_write_reg16(dev, IQS5XX_TAP_TIME, config->tap_time_ms);
+        if (ret < 0) {
+            LOG_ERR("Failed to set the tap time: %d", ret);
+            return ret;
+        }
+    }
+
     // GRT65W: Filter settings are left as the module's non-volatile defaults.
 
 #if IS_ENABLED(CONFIG_MCK_IQS5XX_IC_TUNING)
@@ -1293,6 +1310,8 @@ static int iqs5xx_init(const struct device *dev) {
         .flip_y = DT_INST_PROP(n, flip_y),                                                         \
         .bottom_beta = DT_INST_PROP_OR(n, bottom_beta, -1),                                        \
         .stationary_threshold = DT_INST_PROP_OR(n, stationary_threshold, -1),                      \
+        .idle_touch_rate_ms = DT_INST_PROP_OR(n, idle_touch_rate_ms, -1),                          \
+        .tap_time_ms = DT_INST_PROP_OR(n, tap_time_ms, -1),                                        \
         IQS5XX_GESTURE_POSITIONS_INIT(n)                                                           \
         .gesture_release_ms = DT_INST_PROP(n, gesture_release_ms),                                 \
     };                                                                                             \

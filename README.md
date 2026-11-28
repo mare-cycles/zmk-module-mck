@@ -202,7 +202,9 @@ idle touch rate (0x057C) and the tap time (0x06B9). Slow, fine moves come in ste
 inside the stationary threshold drops the IC to the idle touch rate and the filter damps hard
 below the lower speed. The IC only listens in its communication window, so new values are
 written on the next touch. Until changed, the IC keeps its own values (read at setup and
-returned as `defaults`); `ResetIc` goes back to them.
+returned as `defaults`); `ResetIc` goes back to them. A board can start from other values with
+the devicetree properties `bottom-beta`, `stationary-threshold`, `idle-touch-rate-ms` and
+`tap-time-ms` (written at setup, so they are then the `defaults`).
 
 `CONFIG_MCK_IQS5XX_TOUCH_LOG` (for a USB logging build) logs every touch: the finger count as
 it changes, and when all fingers are up, the most fingers, the duration, how far their center
