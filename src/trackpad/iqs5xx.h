@@ -255,6 +255,14 @@ struct iqs5xx_data {
         uint16_t in_step, in_keep;
         int32_t in_vx, in_vy;
         int32_t in_rem_x, in_rem_y;
+#if IS_ENABLED(CONFIG_MCK_IQS5XX_LIFT_HOLD)
+        // Slow cursor moves waiting a few events (1/256 units, and the event they came in),
+        // dropped if the finger lifts first. Events of this one finger touch so far.
+        int32_t hold_x[4], hold_y[4];
+        uint32_t hold_ev[4];
+        uint8_t hold_len;
+        uint32_t ev_count;
+#endif
     } motion;
 #endif
 };

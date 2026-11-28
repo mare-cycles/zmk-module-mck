@@ -576,6 +576,53 @@ static void iqs5xx_emit_cursor(const struct device *dev, int32_t vx, int32_t vy,
     }
 }
 
+#if IS_ENABLED(CONFIG_MCK_IQS5XX_LIFT_HOLD)
+// MCK: 2026-11-28 (D-136 T7-1) a finger rolls as it lifts, and its last 1-2 events move the
+// position by 5-11 (event log: 11 of 28 touches), so the cursor jumped off a button it was
+// slowly brought onto. Slow moves (each axis <= CONFIG_MCK_IQS5XX_LIFT_HOLD_MAX) wait
+// CONFIG_MCK_IQS5XX_LIFT_HOLD_EVENTS events (about 15 ms each) before they are reported, and
+// are dropped if the finger lifts first. A faster move reports the waiting ones with it.
+
+// Report the waiting moves (all, or those that waited long enough) in one report.
+static void iqs5xx_hold_release(const struct device *dev, bool all) {
+    struct iqs5xx_data *data = dev->data;
+    int32_t vx = 0, vy = 0;
+    uint8_t k = 0;
+    while (k < data->motion.hold_len &&
+           (all || data->motion.ev_count - data->motion.hold_ev[k] >=
+                       CONFIG_MCK_IQS5XX_LIFT_HOLD_EVENTS)) {
+        vx += data->motion.hold_x[k];
+        vy += data->motion.hold_y[k];
+        k++;
+    }
+    if (k == 0) {
+        return;
+    }
+    data->motion.hold_len -= k;
+    for (uint8_t i = 0; i < data->motion.hold_len; i++) {
+        data->motion.hold_x[i] = data->motion.hold_x[i + k];
+        data->motion.hold_y[i] = data->motion.hold_y[i + k];
+        data->motion.hold_ev[i] = data->motion.hold_ev[i + k];
+    }
+    int32_t out_x, out_y;
+    iqs5xx_emit_cursor(dev, vx, vy, &data->motion.rem_x, &data->motion.rem_y, &out_x, &out_y);
+    iqs5xx_motion_log('h', 0, 0, out_x, out_y);
+}
+
+// The finger lifted (or more fingers came): forget the waiting moves.
+static void iqs5xx_hold_drop(struct iqs5xx_data *data) {
+    if (data->motion.hold_len > 0) {
+        int32_t vx = 0, vy = 0;
+        for (uint8_t i = 0; i < data->motion.hold_len; i++) {
+            vx += data->motion.hold_x[i];
+            vy += data->motion.hold_y[i];
+        }
+        iqs5xx_motion_log('d', vx / 256, vy / 256, 0, 0);
+    }
+    data->motion.hold_len = 0;
+}
+#endif
+
 // The ms this move took: since the move before of the same kind in this touch, or one IC
 // report for the first one. 2026-11-27: the IC reports about every 15 ms, but a slow move
 // only every 30-200 ms (one bigger move each), so the speed is measured per time.
@@ -635,6 +682,20 @@ static void iqs5xx_cursor(const struct device *dev, int16_t rel_x, int16_t rel_y
     }
 
     iqs5xx_motion_record(data, IQS5XX_MOTION_CURSOR, vx, vy, dt);
+#if IS_ENABLED(CONFIG_MCK_IQS5XX_LIFT_HOLD)
+    if (MAX(abs(rel_x), abs(rel_y)) <= CONFIG_MCK_IQS5XX_LIFT_HOLD_MAX) {
+        if (data->motion.hold_len == ARRAY_SIZE(data->motion.hold_x)) {
+            iqs5xx_hold_release(dev, true);
+        }
+        uint8_t k = data->motion.hold_len++;
+        data->motion.hold_x[k] = vx;
+        data->motion.hold_y[k] = vy;
+        data->motion.hold_ev[k] = data->motion.ev_count;
+        iqs5xx_motion_log('w', rel_x, rel_y, 0, 0);
+        return;
+    }
+    iqs5xx_hold_release(dev, true);
+#endif
     int32_t out_x, out_y;
     iqs5xx_emit_cursor(dev, vx, vy, &data->motion.rem_x, &data->motion.rem_y, &out_x, &out_y);
     iqs5xx_motion_log('c', rel_x, rel_y, out_x, out_y);
@@ -677,6 +738,17 @@ static void iqs5xx_inertia_work_handler(struct k_work *work) {
 // Follow the touch: a new touch stops the inertia; lifting a quick move starts it.
 static void iqs5xx_motion_touch(const struct device *dev, uint8_t fingers) {
     struct iqs5xx_data *data = dev->data;
+
+#if IS_ENABLED(CONFIG_MCK_IQS5XX_LIFT_HOLD)
+    // MCK: 2026-11-28 count the events of a one finger touch and report the slow moves that
+    // waited long enough; a lift (or another finger) drops the ones still waiting.
+    if (fingers == 1) {
+        data->motion.ev_count++;
+        iqs5xx_hold_release(dev, false);
+    } else {
+        iqs5xx_hold_drop(data);
+    }
+#endif
 
     if (fingers > 0) {
         if (!data->motion.touching) {
