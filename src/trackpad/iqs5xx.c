@@ -1101,7 +1101,36 @@ static void iqs5xx_work_handler(struct k_work *work) {
 #endif
 
     bool tp_movement = (st.sys_info_1 & IQS5XX_TP_MOVEMENT) != 0;
-#if IS_ENABLED(CONFIG_MCK_IQS5XX_KEEP_SLOW_MOVES)
+#if IS_ENABLED(CONFIG_MCK_IQS5XX_REST_GATE)
+    // MCK: 2026-11-28 (D-136 T7) a rest / move state of our own instead of TP_MOVEMENT. A resting
+    // finger rolls by 4-8 and the IC flags that as movement (the cursor shook), while in a slow
+    // move the flag comes and goes (it stuttered). Over the last REST_GATE_EVENTS events the net
+    // movement (|sum x| + |sum y|: a wobble cancels out, a move adds up) must reach
+    // REST_GATE_START to start moving, and below REST_GATE_STOP it rests again. On the logs:
+    // 1/2-1/3 of the shaking at rest, and more of the slow moves kept (94-96 %).
+    if (st.num_fingers == 1) {
+        const uint8_t size = CONFIG_MCK_IQS5XX_REST_GATE_EVENTS;
+        data->gate_x[data->gate_pos] = st.rel_x;
+        data->gate_y[data->gate_pos] = st.rel_y;
+        data->gate_pos = (data->gate_pos + 1) % size;
+        data->gate_len = MIN(data->gate_len + 1, size);
+        int32_t sx = 0, sy = 0;
+        for (uint8_t i = 0; i < data->gate_len; i++) {
+            sx += data->gate_x[i];
+            sy += data->gate_y[i];
+        }
+        const int32_t net = abs(sx) + abs(sy);
+        if (data->gate_moving && net < CONFIG_MCK_IQS5XX_REST_GATE_STOP) {
+            data->gate_moving = false;
+        } else if (!data->gate_moving && net >= CONFIG_MCK_IQS5XX_REST_GATE_START) {
+            data->gate_moving = true;
+        }
+        tp_movement = data->gate_moving;
+    } else {
+        data->gate_len = data->gate_pos = 0;
+        data->gate_moving = false;
+    }
+#elif IS_ENABLED(CONFIG_MCK_IQS5XX_KEEP_SLOW_MOVES)
     // MCK: 2026-11-28 (D-136 T7-1) in a slow move TP_MOVEMENT comes and goes (the IC calls the
     // touch stationary in between), and the moves of the events without it were dropped: the
     // cursor stuttered as it slowed down (event log: 1-2 tenths of the move lost). Keep them

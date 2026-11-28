@@ -206,6 +206,12 @@ returned as `defaults`); `ResetIc` goes back to them. A board can start from oth
 the devicetree properties `bottom-beta`, `stationary-threshold`, `idle-touch-rate-ms` and
 `tap-time-ms` (written at setup, so they are then the `defaults`).
 
+**Rest gate** (`CONFIG_MCK_IQS5XX_REST_GATE`, default y): one finger moves are used while the
+touch is moving by a state of the driver's own, not the IC's `TP_MOVEMENT` flag (a resting
+finger's small roll is flagged as movement, and in a slow move the flag comes and goes). It starts
+moving when the net movement over the last 6 events (`|sum x| + |sum y|`) reaches 12 and rests
+again below 3.
+
 **Tap and drag** (`CONFIG_MCK_IQS5XX_TAP_DRAG`, default y; on at first with
 `CONFIG_MCK_IQS5XX_TAP_DRAG_ON`, then the movement setting `tap_drag`): a one finger touch that
 starts within 150 ms of a one finger tap and stays still for 300 ms (net movement below 8) keeps

@@ -288,6 +288,34 @@ config MCK_IQS5XX_KEEP_SLOW_MOVES
       TP_MOVEMENT is still used when at least 2 of the last 4 events of the
       touch had it. A resting finger rarely has it, so it still moves nothing.
 
+config MCK_IQS5XX_REST_GATE
+    bool "Our own rest / move state for one finger instead of TP_MOVEMENT"
+    default y
+    help
+      A resting finger rolls a little and the IC flags it as movement (the
+      cursor shakes), while in a slow move the flag comes and goes (it
+      stutters). With this, one finger moves are used while the touch is
+      moving: it starts when the net movement over the last
+      MCK_IQS5XX_REST_GATE_EVENTS events (|sum x| + |sum y|) reaches
+      MCK_IQS5XX_REST_GATE_START and stops below MCK_IQS5XX_REST_GATE_STOP.
+      Replaces MCK_IQS5XX_KEEP_SLOW_MOVES.
+
+config MCK_IQS5XX_REST_GATE_EVENTS
+    int "Events (about 15 ms each) the net movement is summed over"
+    depends on MCK_IQS5XX_REST_GATE
+    range 2 16
+    default 6
+
+config MCK_IQS5XX_REST_GATE_START
+    int "Net movement that starts a move from rest (IC units)"
+    depends on MCK_IQS5XX_REST_GATE
+    default 12
+
+config MCK_IQS5XX_REST_GATE_STOP
+    int "Net movement below which a move comes to rest (IC units)"
+    depends on MCK_IQS5XX_REST_GATE
+    default 3
+
 config MCK_IQS5XX_EVENT_LOG
     bool "Log every IC event (moves, flags, finger 1 position) for tuning"
     depends on MCK_IQS5XX_BLOCK_READ

@@ -198,6 +198,12 @@ struct iqs5xx_data {
     // MCK: TP_MOVEMENT of the last events of this touch, newest in bit 0.
     uint8_t movement_hist;
 #endif
+#if IS_ENABLED(CONFIG_MCK_IQS5XX_REST_GATE)
+    // MCK: The last moves of this one finger touch, and whether it is moving (rest gate).
+    int16_t gate_x[16], gate_y[16];
+    uint8_t gate_len, gate_pos;
+    bool gate_moving;
+#endif
 #if IS_ENABLED(CONFIG_MCK_IQS5XX_TOUCH_LOG)
     // MCK: One touch (from the first finger down to all fingers up), for the touch log.
     struct {
