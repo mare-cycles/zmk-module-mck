@@ -323,9 +323,10 @@ config MCK_IQS5XX_EVENT_LOG
     help
       One line per event, at the info level: "e <ms since the last event>
       <fingers> <system info 1> <gesture events 0> <gesture events 1>
-      <relative x y> <finger 1 absolute x y>", also for the events the cursor
-      does not use (no TP_MOVEMENT). For a USB logging build, to see how slow
-      moves arrive.
+      <relative x y> <finger 1 absolute x y> <finger 1 strength>", also for
+      the events the cursor does not use (no TP_MOVEMENT), and "g 1|0 <net>"
+      when the rest gate starts / stops moving. For a USB logging build, to
+      see how slow moves arrive and how a finger lifts.
 
 config MCK_IQS5XX_IC_TUNING
     bool "Change some values of the IC itself at runtime (slow moves, taps)"

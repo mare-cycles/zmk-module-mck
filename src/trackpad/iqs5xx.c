@@ -1071,13 +1071,14 @@ static void iqs5xx_work_handler(struct k_work *work) {
 #if IS_ENABLED(CONFIG_MCK_IQS5XX_EVENT_LOG)
     // MCK: 2026-11-28 (D-136 T7-1) every event as the IC sent it, also those the cursor does
     // not use (no TP_MOVEMENT): ms since the last event, fingers, system info 1 (bit 0
-    // TP_MOVEMENT), gesture events 0 / 1, relative X / Y, finger 1 absolute X / Y.
+    // TP_MOVEMENT), gesture events 0 / 1, relative X / Y, finger 1 absolute X / Y, and
+    // (2026-11-28) finger 1 touch strength, to tell a lifting finger.
     {
         static int64_t last_ev_ms;
         int64_t now = k_uptime_get();
-        LOG_INF("e %u %u %02x %02x %02x %d %d %u %u", (uint32_t)MIN(now - last_ev_ms, 99999),
+        LOG_INF("e %u %u %02x %02x %02x %d %d %u %u %u", (uint32_t)MIN(now - last_ev_ms, 99999),
                 st.num_fingers, st.sys_info_1, st.gesture_events_0, st.gesture_events_1, st.rel_x,
-                st.rel_y, st.fingers[0].x, st.fingers[0].y);
+                st.rel_y, st.fingers[0].x, st.fingers[0].y, st.fingers[0].strength);
         last_ev_ms = now;
     }
 #endif
@@ -1122,8 +1123,14 @@ static void iqs5xx_work_handler(struct k_work *work) {
         const int32_t net = abs(sx) + abs(sy);
         if (data->gate_moving && net < CONFIG_MCK_IQS5XX_REST_GATE_STOP) {
             data->gate_moving = false;
+#if IS_ENABLED(CONFIG_MCK_IQS5XX_EVENT_LOG)
+            LOG_INF("g 0 %d", net);
+#endif
         } else if (!data->gate_moving && net >= CONFIG_MCK_IQS5XX_REST_GATE_START) {
             data->gate_moving = true;
+#if IS_ENABLED(CONFIG_MCK_IQS5XX_EVENT_LOG)
+            LOG_INF("g 1 %d", net);
+#endif
         }
         tp_movement = data->gate_moving;
     } else {
