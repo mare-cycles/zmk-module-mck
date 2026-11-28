@@ -227,6 +227,16 @@ config MCK_IQS5XX_TOUCH_LOG
       center moved and the gestures the IC reported. For a USB logging
       build, to choose the values of the 3 / 4 finger gestures.
 
+config MCK_IQS5XX_IC_TUNING
+    bool "Change some values of the IC itself at runtime (slow moves, taps)"
+    default y
+    help
+      The stationary touch threshold, the dynamic XY filter (bottom beta,
+      lower speed), the idle touch rate and the tap time of the IQS5xx can
+      be changed through mck__trackpad (MCK_TRACKPAD_STUDIO_RPC) and are
+      saved in "mck/tp/ic". They are written in the IC's next communication
+      window (the next touch). Until changed, the IC keeps its own values.
+
 endif # MCK_IQS5XX
 
 endmenu

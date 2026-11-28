@@ -1,6 +1,7 @@
 /*
  * mck__trackpad: the trackpad (mck,iqs5xx) movement settings for MCK Aquarium,
  * over the custom ZMK Studio RPC. 2026-11-28 (D-136 T5).
+ * 2026-11-28 (D-136 T7-1): also the values of the IC itself (GetIc / SetIc / ResetIc).
  *
  * Same shape as device_handler.c (after cormoran/zmk-module-template-with-custom-studio-rpc).
  * Copyright (c) 2026 mare-cycles
@@ -56,7 +57,50 @@ static void handle_get_info(mck_trackpad_Response *resp) {
     r->tp_scroll_supported = IS_ENABLED(CONFIG_MCK_BEHAVIOR_TP_SCROLL);
     r->gestures_supported = info.gestures;
     r->gesture_position_count = info.gesture_position_count;
+    r->ic_supported = IS_ENABLED(CONFIG_MCK_IQS5XX_IC_TUNING);
 }
+
+#if IS_ENABLED(CONFIG_MCK_IQS5XX_IC_TUNING)
+// 2026-11-28 (D-136 T7-1) the values of the IC itself.
+static mck_trackpad_Ic to_pb_ic(const struct mck_trackpad_ic *v) {
+    return (mck_trackpad_Ic){
+        .stationary_threshold = v->stationary_threshold,
+        .bottom_beta = v->bottom_beta,
+        .lower_speed = v->lower_speed,
+        .idle_touch_ms = v->idle_touch_ms,
+        .tap_time_ms = v->tap_time_ms,
+    };
+}
+
+static void fill_ic(mck_trackpad_Response *resp) {
+    resp->which_response_type = mck_trackpad_Response_ic_tag;
+    mck_trackpad_IcResponse *r = &resp->response_type.ic;
+    *r = (mck_trackpad_IcResponse)mck_trackpad_IcResponse_init_zero;
+    struct mck_trackpad_ic v;
+    mck_trackpad_get_ic(&v);
+    r->has_ic = true;
+    r->ic = to_pb_ic(&v);
+    r->defaults_read = mck_trackpad_get_default_ic(&v);
+    if (r->defaults_read) {
+        r->has_defaults = true;
+        r->defaults = to_pb_ic(&v);
+    }
+}
+
+static void handle_set_ic(const mck_trackpad_SetIcRequest *req, mck_trackpad_Response *resp) {
+    if (req->has_ic) {
+        // Clamped to the ranges in mck_trackpad_set_ic().
+        mck_trackpad_set_and_save_ic(&(struct mck_trackpad_ic){
+            .stationary_threshold = (uint8_t)MIN(req->ic.stationary_threshold, 255),
+            .bottom_beta = (uint8_t)MIN(req->ic.bottom_beta, 255),
+            .lower_speed = (uint8_t)MIN(req->ic.lower_speed, 255),
+            .idle_touch_ms = (uint16_t)MIN(req->ic.idle_touch_ms, 65535),
+            .tap_time_ms = (uint16_t)MIN(req->ic.tap_time_ms, 65535),
+        });
+    }
+    fill_ic(resp);
+}
+#endif
 
 static void handle_set_motion(const mck_trackpad_SetMotionRequest *req,
                               mck_trackpad_Response *resp) {
@@ -109,6 +153,18 @@ static bool trackpad_rpc_handle_request(const zmk_custom_CallRequest *raw_reques
         mck_trackpad_reset_motion();
         fill_motion(resp);
         break;
+#if IS_ENABLED(CONFIG_MCK_IQS5XX_IC_TUNING)
+    case mck_trackpad_Request_get_ic_tag:
+        fill_ic(resp);
+        break;
+    case mck_trackpad_Request_set_ic_tag:
+        handle_set_ic(&req.request_type.set_ic, resp);
+        break;
+    case mck_trackpad_Request_reset_ic_tag:
+        mck_trackpad_reset_ic();
+        fill_ic(resp);
+        break;
+#endif
     default:
         LOG_WRN("Unsupported mck__trackpad request type: %d", req.which_request_type);
         set_error(resp, "Unsupported request");

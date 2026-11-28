@@ -195,6 +195,15 @@ reads and changes them at runtime. A change takes effect at once and is saved
 `CONFIG_MCK_TRACKPAD_SAVE_DELAY_MS` (1000) later in the setting `mck/tp/motion`
 (`CONFIG_MCK_TRACKPAD_SETTINGS`); `ResetMotion` goes back to the Kconfig values.
 
+Some values of the **IC itself** can be changed the same way (`CONFIG_MCK_IQS5XX_IC_TUNING`,
+default y; `GetIc` / `SetIc` / `ResetIc`, saved in `mck/tp/ic`): the stationary touch
+threshold (0x0672), the dynamic XY filter's bottom beta and lower speed (0x0637 / 0x0638), the
+idle touch rate (0x057C) and the tap time (0x06B9). Slow, fine moves come in steps when a touch
+inside the stationary threshold drops the IC to the idle touch rate and the filter damps hard
+below the lower speed. The IC only listens in its communication window, so new values are
+written on the next touch. Until changed, the IC keeps its own values (read at setup and
+returned as `defaults`); `ResetIc` goes back to them.
+
 `CONFIG_MCK_IQS5XX_TOUCH_LOG` (for a USB logging build) logs every touch: the finger count as
 it changes, and when all fingers are up, the most fingers, the duration, how far their center
 moved and the gestures the IC reported. `CONFIG_MCK_IQS5XX_MOTION_LOG` logs every move report

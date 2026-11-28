@@ -18,6 +18,8 @@ message GetInfoResponse {
     bool gestures_supported = 3;
     // Number of key positions the taps / swipes press (gesture-positions)
     uint32 gesture_position_count = 4;
+    // The IC values below can be changed (CONFIG_MCK_IQS5XX_IC_TUNING)
+    bool ic_supported = 5;
 }
 
 message Motion {
@@ -41,12 +43,50 @@ message SetMotionRequest { Motion motion = 1; }
 // Back to the values the firmware was built with, and forget the saved ones
 message ResetMotionRequest {}
 
+// Values of the IC itself (IQS5xx, datasheet Rev 2.1), mainly for slow, fine moves.
+// They are written to the IC on the next touch (it only listens then).
+message Ic {
+    // A touch that stays within this many pixels is stationary, and the IC then runs at the
+    // idle touch rate (0x0672, 1-255)
+    uint32 stationary_threshold = 1;
+    // Dynamic filter: damping below the lower speed, beta / 256 (0x0637, 1-255; smaller =
+    // smoother but lags)
+    uint32 bottom_beta = 2;
+    // Dynamic filter: the speed (pixels per cycle) below which bottom_beta is used
+    // (0x0638, 1-255)
+    uint32 lower_speed = 3;
+    // Cycle while a touch is stationary, ms (0x057C, 5-1000)
+    uint32 idle_touch_ms = 4;
+    // A one / two finger tap must be released within this, ms (0x06B9, 20-1000)
+    uint32 tap_time_ms = 5;
+}
+
+message GetIcRequest {}
+
+// Applies and saves `ic` (out of range values are clamped)
+message SetIcRequest { Ic ic = 1; }
+
+// Back to the IC's own values, and forget the saved ones
+message ResetIcRequest {}
+
+message IcResponse {
+    // The values in use
+    Ic ic = 1;
+    // The IC's own values (the module's, or the devicetree's), read when it was set up
+    Ic defaults = 2;
+    // false until the trackpad has been set up (then `defaults` is empty)
+    bool defaults_read = 3;
+}
+
 message Request {
     oneof request_type {
         GetInfoRequest get_info = 1;
         GetMotionRequest get_motion = 2;
         SetMotionRequest set_motion = 3;
         ResetMotionRequest reset_motion = 4;
+        GetIcRequest get_ic = 5;
+        SetIcRequest set_ic = 6;
+        ResetIcRequest reset_ic = 7;
     }
 }
 
@@ -58,5 +98,7 @@ message Response {
         GetInfoResponse get_info = 2;
         // Answer to GetMotion, SetMotion and ResetMotion (the values now in effect)
         Motion motion = 3;
+        // Answer to GetIc, SetIc and ResetIc
+        IcResponse ic = 4;
     }
 }

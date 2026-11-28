@@ -20,6 +20,10 @@
  *
  * MCK: 2026-11-26 (D-136 T4) correction, acceleration, inertia and scroll only
  * (MCK_IQS5XX_MOTION, off by default).
+ *
+ * MCK: 2026-11-28 (D-136 T7-1) some values of the IC itself (stationary threshold, dynamic
+ * filter, idle touch rate, tap time) can be changed at runtime (MCK_IQS5XX_IC_TUNING); until
+ * then the IC keeps its own.
  */
 
 #define DT_DRV_COMPAT mck_iqs5xx
@@ -745,6 +749,118 @@ static void iqs5xx_motion_touch(const struct device *dev, uint8_t fingers) {
 }
 #endif // IS_ENABLED(CONFIG_MCK_IQS5XX_MOTION)
 
+#if IS_ENABLED(CONFIG_MCK_IQS5XX_IC_TUNING)
+// MCK: 2026-11-28 (D-136 T7-1) values of the IC itself (struct mck_trackpad_ic), changed at
+// runtime through mck__trackpad. Slow moves arrived every 100-200 ms: a touch within the
+// stationary threshold (20 px) makes the IC run at the idle touch rate (50 ms), and below the
+// lower speed the dynamic filter damps hard (bottom beta 7 / 256).
+// The IC only takes writes while its communication window is open, so a change bumps
+// ic_changes and each trackpad writes the values on its next event (or setup).
+static struct k_spinlock ic_lock;
+static struct mck_trackpad_ic ic_cfg;
+static struct mck_trackpad_ic ic_default;
+static bool ic_default_read;
+// ic_cfg was set (saved values loaded, or a change); until then it follows the IC.
+static bool ic_cfg_set;
+static atomic_t ic_changes;
+
+void mck_trackpad_get_ic(struct mck_trackpad_ic *ic) {
+    k_spinlock_key_t key = k_spin_lock(&ic_lock);
+    *ic = ic_cfg;
+    k_spin_unlock(&ic_lock, key);
+}
+
+bool mck_trackpad_get_default_ic(struct mck_trackpad_ic *ic) {
+    k_spinlock_key_t key = k_spin_lock(&ic_lock);
+    *ic = ic_default;
+    bool read = ic_default_read;
+    k_spin_unlock(&ic_lock, key);
+    return read;
+}
+
+void mck_trackpad_set_ic(const struct mck_trackpad_ic *ic) {
+    const struct mck_trackpad_ic v = {
+        .stationary_threshold = MAX(ic->stationary_threshold, 1),
+        .bottom_beta = MAX(ic->bottom_beta, 1),
+        .lower_speed = MAX(ic->lower_speed, 1),
+        .idle_touch_ms = CLAMP(ic->idle_touch_ms, 5, 1000),
+        .tap_time_ms = CLAMP(ic->tap_time_ms, 20, 1000),
+    };
+    k_spinlock_key_t key = k_spin_lock(&ic_lock);
+    ic_cfg = v;
+    ic_cfg_set = true;
+    k_spin_unlock(&ic_lock, key);
+    atomic_inc(&ic_changes);
+}
+
+static int iqs5xx_ic_read(const struct device *dev, struct mck_trackpad_ic *ic) {
+    int ret = iqs5xx_read_reg8(dev, IQS5XX_STATIONARY_THRESH, &ic->stationary_threshold);
+    ret = ret < 0 ? ret : iqs5xx_read_reg8(dev, IQS5XX_BOTTOM_BETA, &ic->bottom_beta);
+    ret = ret < 0 ? ret : iqs5xx_read_reg8(dev, IQS5XX_DYNAMIC_LOWER_SPEED, &ic->lower_speed);
+    ret = ret < 0 ? ret : iqs5xx_read_reg16(dev, IQS5XX_IDLE_TOUCH_RATE, &ic->idle_touch_ms);
+    ret = ret < 0 ? ret : iqs5xx_read_reg16(dev, IQS5XX_TAP_TIME, &ic->tap_time_ms);
+    return ret;
+}
+
+static int iqs5xx_ic_write(const struct device *dev, const struct mck_trackpad_ic *ic) {
+    int ret = iqs5xx_write_reg8(dev, IQS5XX_STATIONARY_THRESH, ic->stationary_threshold);
+    ret = ret < 0 ? ret : iqs5xx_write_reg8(dev, IQS5XX_BOTTOM_BETA, ic->bottom_beta);
+    ret = ret < 0 ? ret : iqs5xx_write_reg8(dev, IQS5XX_DYNAMIC_LOWER_SPEED, ic->lower_speed);
+    ret = ret < 0 ? ret : iqs5xx_write_reg16(dev, IQS5XX_IDLE_TOUCH_RATE, ic->idle_touch_ms);
+    ret = ret < 0 ? ret : iqs5xx_write_reg16(dev, IQS5XX_TAP_TIME, ic->tap_time_ms);
+    return ret;
+}
+
+// In the communication window: on setup read the IC's own values (once) and write the values
+// in use if they were set; on an event write them only when they changed since.
+static void iqs5xx_ic_apply(const struct device *dev, bool setup) {
+    struct iqs5xx_data *data = dev->data;
+
+    if (setup && !ic_default_read) {
+        struct mck_trackpad_ic def;
+        if (iqs5xx_ic_read(dev, &def) == 0) {
+            k_spinlock_key_t key = k_spin_lock(&ic_lock);
+            ic_default = def;
+            ic_default_read = true;
+            if (!ic_cfg_set) {
+                ic_cfg = def;
+            }
+            k_spin_unlock(&ic_lock, key);
+            LOG_INF("IC values: stationary %u, bottom beta %u, lower speed %u, idle touch %u ms, "
+                    "tap %u ms",
+                    def.stationary_threshold, def.bottom_beta, def.lower_speed,
+                    def.idle_touch_ms, def.tap_time_ms);
+        } else {
+            LOG_WRN("Failed to read the IC values");
+        }
+    }
+
+    const atomic_val_t changes = atomic_get(&ic_changes);
+    if (!setup && data->ic_written == changes) {
+        return;
+    }
+
+    k_spinlock_key_t key = k_spin_lock(&ic_lock);
+    const bool set = ic_cfg_set;
+    const struct mck_trackpad_ic v = ic_cfg;
+    k_spin_unlock(&ic_lock, key);
+
+    if (set) {
+        int ret = iqs5xx_ic_write(dev, &v);
+        if (ret < 0) {
+            // Try again on the next event.
+            LOG_WRN("Failed to write the IC values: %d", ret);
+            return;
+        }
+        LOG_INF("IC values set: stationary %u, bottom beta %u, lower speed %u, idle touch %u ms, "
+                "tap %u ms",
+                v.stationary_threshold, v.bottom_beta, v.lower_speed, v.idle_touch_ms,
+                v.tap_time_ms);
+    }
+    data->ic_written = changes;
+}
+#endif // IS_ENABLED(CONFIG_MCK_IQS5XX_IC_TUNING)
+
 static void iqs5xx_work_handler(struct k_work *work) {
     struct iqs5xx_data *data = CONTAINER_OF(work, struct iqs5xx_data, work);
     const struct device *dev = data->dev;
@@ -880,6 +996,11 @@ static void iqs5xx_work_handler(struct k_work *work) {
 #endif
     }
 
+#if IS_ENABLED(CONFIG_MCK_IQS5XX_IC_TUNING)
+    // MCK: Write the IC values changed since the last event (the window is open now).
+    iqs5xx_ic_apply(dev, false);
+#endif
+
 end_comm:
     // End communication window.
     iqs5xx_end_comm_window(dev);
@@ -962,6 +1083,12 @@ static int iqs5xx_setup_device(const struct device *dev) {
     }
 
     // GRT65W: Filter settings are left as the module's non-volatile defaults.
+
+#if IS_ENABLED(CONFIG_MCK_IQS5XX_IC_TUNING)
+    // MCK: Read the IC's own values once, and write the values in use if they were changed
+    // (again after a reset, which reloads the module's values).
+    iqs5xx_ic_apply(dev, true);
+#endif
 
     uint8_t single_finger_gestures = 0;
     single_finger_gestures |= config->one_finger_tap ? IQS5XX_SINGLE_TAP : 0;

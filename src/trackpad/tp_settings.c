@@ -2,6 +2,8 @@
  * Keep the trackpad movement settings (mck,iqs5xx, CONFIG_MCK_IQS5XX_MOTION) in flash:
  * the Zephyr setting "mck/tp/motion". MCK Aquarium changes them through mck__trackpad.
  *
+ * 2026-11-28 (D-136 T7-1): also the values of the IC itself, "mck/tp/ic".
+ *
  * 2026-11-28 (D-136 T5). A change is used at once and saved
  * CONFIG_MCK_TRACKPAD_SAVE_DELAY_MS later, so a slider that sends many changes
  * writes the flash once. settings_reset (it erases all the settings) brings back
@@ -37,8 +39,56 @@ struct tp_saved_motion {
     uint8_t scroll_only;
 } __packed;
 
+#if IS_ENABLED(CONFIG_MCK_IQS5XX_IC_TUNING)
+// 2026-11-28 (D-136 T7-1) the IC values ("mck/tp/ic"). Same rules as the motion.
+#define TP_IC_SETTINGS_KEY "mck/tp/ic"
+#define TP_IC_SETTINGS_VERSION 1
+
+struct tp_saved_ic {
+    uint8_t version;
+    uint8_t stationary_threshold;
+    uint8_t bottom_beta;
+    uint8_t lower_speed;
+    uint16_t idle_touch_ms;
+    uint16_t tap_time_ms;
+} __packed;
+
+static int tp_settings_load_ic(size_t len, settings_read_cb read_cb, void *cb_arg) {
+    struct tp_saved_ic saved;
+    if (len != sizeof(saved)) {
+        LOG_WRN("Trackpad IC settings of an unknown size (%zu), not used", len);
+        return 0;
+    }
+    int rc = read_cb(cb_arg, &saved, sizeof(saved));
+    if (rc < 0) {
+        return rc;
+    }
+    if (saved.version != TP_IC_SETTINGS_VERSION) {
+        LOG_WRN("Trackpad IC settings version %u, not used", saved.version);
+        return 0;
+    }
+    mck_trackpad_set_ic(&(struct mck_trackpad_ic){
+        .stationary_threshold = saved.stationary_threshold,
+        .bottom_beta = saved.bottom_beta,
+        .lower_speed = saved.lower_speed,
+        .idle_touch_ms = saved.idle_touch_ms,
+        .tap_time_ms = saved.tap_time_ms,
+    });
+    LOG_INF("Trackpad IC settings loaded: stationary %u, bottom beta %u, lower speed %u, "
+            "idle touch %u ms, tap %u ms",
+            saved.stationary_threshold, saved.bottom_beta, saved.lower_speed,
+            saved.idle_touch_ms, saved.tap_time_ms);
+    return 0;
+}
+#endif
+
 static int tp_settings_load_cb(const char *name, size_t len, settings_read_cb read_cb,
                                void *cb_arg) {
+#if IS_ENABLED(CONFIG_MCK_IQS5XX_IC_TUNING)
+    if (strcmp(name, "ic") == 0) {
+        return tp_settings_load_ic(len, read_cb, cb_arg);
+    }
+#endif
     if (strcmp(name, "motion") != 0) {
         return -ENOENT;
     }
@@ -105,3 +155,42 @@ void mck_trackpad_reset_motion(void) {
         LOG_WRN("Failed to forget the trackpad settings: %d", err);
     }
 }
+
+#if IS_ENABLED(CONFIG_MCK_IQS5XX_IC_TUNING)
+static void tp_ic_save_work_cb(struct k_work *work) {
+    ARG_UNUSED(work);
+    struct mck_trackpad_ic ic;
+    mck_trackpad_get_ic(&ic);
+    struct tp_saved_ic saved = {
+        .version = TP_IC_SETTINGS_VERSION,
+        .stationary_threshold = ic.stationary_threshold,
+        .bottom_beta = ic.bottom_beta,
+        .lower_speed = ic.lower_speed,
+        .idle_touch_ms = ic.idle_touch_ms,
+        .tap_time_ms = ic.tap_time_ms,
+    };
+    int err = settings_save_one(TP_IC_SETTINGS_KEY, &saved, sizeof(saved));
+    if (err < 0) {
+        LOG_WRN("Failed to save the trackpad IC settings: %d", err);
+    }
+}
+
+static K_WORK_DELAYABLE_DEFINE(tp_ic_save_work, tp_ic_save_work_cb);
+
+void mck_trackpad_set_and_save_ic(const struct mck_trackpad_ic *ic) {
+    mck_trackpad_set_ic(ic);
+    k_work_reschedule(&tp_ic_save_work, K_MSEC(CONFIG_MCK_TRACKPAD_SAVE_DELAY_MS));
+}
+
+void mck_trackpad_reset_ic(void) {
+    struct mck_trackpad_ic def;
+    if (mck_trackpad_get_default_ic(&def)) {
+        mck_trackpad_set_ic(&def);
+    }
+    k_work_cancel_delayable(&tp_ic_save_work);
+    int err = settings_delete(TP_IC_SETTINGS_KEY);
+    if (err < 0) {
+        LOG_WRN("Failed to forget the trackpad IC settings: %d", err);
+    }
+}
+#endif
