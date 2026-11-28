@@ -207,11 +207,12 @@ config MCK_IQS5XX_TAP_DRAG
     bool "Tap and drag (can be turned on through mck__trackpad)"
     default y
     help
-      A one finger touch that starts soon after a one finger tap and moves
-      (or stays) keeps the one finger tap's key position (BTN_0 without
-      gesture-positions) pressed until the finger lifts. A second touch that
-      lifts at once stays a tap (a double click). Whether it is on is a
-      movement setting (tap_drag), MCK_IQS5XX_TAP_DRAG_ON at first.
+      A one finger touch that starts soon after a one finger tap and stays
+      still for a moment keeps the one finger tap's key position (BTN_0
+      without gesture-positions) pressed until the finger lifts. A touch that
+      moves first is an ordinary move, one that lifts at once stays a tap (a
+      double click). Whether it is on is a movement setting (tap_drag),
+      MCK_IQS5XX_TAP_DRAG_ON at first.
 
 config MCK_IQS5XX_TAP_DRAG_ON
     bool "Tap and drag is on at first"
@@ -220,17 +221,17 @@ config MCK_IQS5XX_TAP_DRAG_ON
 config MCK_IQS5XX_TAP_DRAG_WINDOW_MS
     int "A touch within this many ms of a tap may become a drag"
     depends on MCK_IQS5XX_TAP_DRAG
-    default 250
+    default 150
 
 config MCK_IQS5XX_TAP_DRAG_MOVE
-    int "It becomes a drag after moving this much (IC units, |x| + |y| summed)"
+    int "It is an ordinary move once it went this far (IC units, |sum x| + |sum y|)"
     depends on MCK_IQS5XX_TAP_DRAG
-    default 10
+    default 8
 
 config MCK_IQS5XX_TAP_DRAG_HOLD_MS
-    int "Or after staying this many ms"
+    int "It becomes a drag after staying still this many ms"
     depends on MCK_IQS5XX_TAP_DRAG
-    default 150
+    default 300
 
 config MCK_IQS5XX_MOTION_LOG
     bool "Log every move report and inertia step for tuning"

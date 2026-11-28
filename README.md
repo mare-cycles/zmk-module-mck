@@ -208,9 +208,10 @@ the devicetree properties `bottom-beta`, `stationary-threshold`, `idle-touch-rat
 
 **Tap and drag** (`CONFIG_MCK_IQS5XX_TAP_DRAG`, default y; on at first with
 `CONFIG_MCK_IQS5XX_TAP_DRAG_ON`, then the movement setting `tap_drag`): a one finger touch that
-starts within 250 ms of a one finger tap and moves (10) or stays (150 ms) keeps the one finger
-tap's key position pressed until the finger lifts. A second touch that lifts at once is still a
-tap, so a double tap stays a double click.
+starts within 150 ms of a one finger tap and stays still for 300 ms (net movement below 8) keeps
+the one finger tap's key position pressed until the finger lifts. A touch that moves first is an
+ordinary move (tapping and moving on at once must not drag), and one that lifts at once is still
+a tap, so a double tap stays a double click.
 
 `CONFIG_MCK_IQS5XX_TOUCH_LOG` (for a USB logging build) logs every touch: the finger count as
 it changes, and when all fingers are up, the most fingers, the duration, how far their center

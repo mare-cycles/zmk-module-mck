@@ -267,7 +267,8 @@ struct iqs5xx_data {
         // Tap and drag: when the last one finger tap was (0 = none), and this touch.
         int64_t drag_tap_ms;
         int64_t drag_start_ms;
-        int32_t drag_move;
+        // The net movement of the touch so far (a resting finger's wobble cancels out).
+        int32_t drag_dx, drag_dy;
         uint8_t drag_state;
 #endif
     } motion;

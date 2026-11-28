@@ -834,11 +834,13 @@ static void iqs5xx_motion_touch(const struct device *dev, uint8_t fingers) {
 #endif // IS_ENABLED(CONFIG_MCK_IQS5XX_MOTION)
 
 #if IS_ENABLED(CONFIG_MCK_IQS5XX_TAP_DRAG)
-// MCK: 2026-11-28 (D-136 T7-4a) tap and drag, as the GR-Trackpad65 kit does: a one finger
-// touch that starts within CONFIG_MCK_IQS5XX_TAP_DRAG_WINDOW_MS of a one finger tap and moves
-// (CONFIG_MCK_IQS5XX_TAP_DRAG_MOVE) or stays (CONFIG_MCK_IQS5XX_TAP_DRAG_HOLD_MS) keeps the
-// one finger tap's key position (BTN_0 without gesture-positions) pressed until it lifts.
-// A second touch that lifts at once stays a tap (a double click).
+// MCK: 2026-11-28 (D-136 T7-4a) tap and drag: a one finger touch that starts within
+// CONFIG_MCK_IQS5XX_TAP_DRAG_WINDOW_MS of a one finger tap and stays still (net movement below
+// CONFIG_MCK_IQS5XX_TAP_DRAG_MOVE) for CONFIG_MCK_IQS5XX_TAP_DRAG_HOLD_MS keeps the one finger
+// tap's key position (BTN_0 without gesture-positions) pressed until it lifts. A touch that
+// moves before then is an ordinary move, and one that lifts at once stays a tap (a double
+// click). The first version also started on a quick move and after 150 ms: tapping and then
+// moving on at once (80-225 ms later) held the button and dragged things (draglog2).
 #define IQS5XX_DRAG_IDLE 0 // no touch yet, or the last one ended
 #define IQS5XX_DRAG_WAIT 1 // a touch after a tap: a drag if it moves or stays
 #define IQS5XX_DRAG_ON 2   // dragging
@@ -876,16 +878,20 @@ static bool iqs5xx_tap_drag(const struct device *dev, const struct iqs5xx_status
             now - data->motion.drag_tap_ms <= CONFIG_MCK_IQS5XX_TAP_DRAG_WINDOW_MS) {
             data->motion.drag_state = IQS5XX_DRAG_WAIT;
             data->motion.drag_start_ms = now;
-            data->motion.drag_move = 0;
+            data->motion.drag_dx = data->motion.drag_dy = 0;
         } else if (fingers > 0) {
             data->motion.drag_state = IQS5XX_DRAG_NO;
         }
         break;
     case IQS5XX_DRAG_WAIT:
         if (fingers == 1) {
-            data->motion.drag_move += abs(st->rel_x) + abs(st->rel_y);
-            if (data->motion.drag_move >= CONFIG_MCK_IQS5XX_TAP_DRAG_MOVE ||
-                now - data->motion.drag_start_ms >= CONFIG_MCK_IQS5XX_TAP_DRAG_HOLD_MS) {
+            data->motion.drag_dx += st->rel_x;
+            data->motion.drag_dy += st->rel_y;
+            if (abs(data->motion.drag_dx) + abs(data->motion.drag_dy) >=
+                CONFIG_MCK_IQS5XX_TAP_DRAG_MOVE) {
+                // It moved first: an ordinary move.
+                data->motion.drag_state = IQS5XX_DRAG_NO;
+            } else if (now - data->motion.drag_start_ms >= CONFIG_MCK_IQS5XX_TAP_DRAG_HOLD_MS) {
                 data->motion.drag_state = IQS5XX_DRAG_ON;
                 data->motion.drag_tap_ms = 0;
                 iqs5xx_drag_press(dev);
